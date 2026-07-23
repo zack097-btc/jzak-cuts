@@ -45,20 +45,21 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What it does (v3)
+## What it does (v4)
 
-Text-to-cut with custom fonts · **SVG *and* DXF import** (lines, polylines, arcs, circles) · **multi-object layout** — add as many pieces as you want, click to select, drag to move · **grid copies** — batch a whole run of the same decal across the vinyl in one cut · **canvas zoom & pan** (wheel-zoom at cursor, drag to pan, +/−/Fit) · **blade-offset / corner-overcut compensation** (mm) · **material presets** (Oracal 651/751, HTV, reflective, sandblast, window tint) · **registration marks** for print-and-cut · **saved job library** (in-browser, plus `.json` export/import) · weed border · HPGL generation · direct-to-cutter over Web Serial · `.plt` and `.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **image tracing** (PNG/JPG/GIF/BMP/WEBP → cut lines) · **SVG & DXF import** · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
 
-### Using the v3 production features
+### Using the v4 features
 
-- **Multiple objects:** every *Add Lettering* or import drops a new object on the mat. The **Objects on Mat** list lets you select or delete each; click an object on the canvas to select it, then **drag** to position it. The *Size & Position* panel edits whichever object is selected.
-- **Batch a run (grid copies):** select an object, set **Copies** and **Gap**, hit **Make grid** — it fills the vinyl width with copies so you can cut a whole batch of the same decal at once. **Duplicate** makes a single offset copy.
-- **Registration marks:** tick *Registration marks (print & cut)* to add L-shaped corner marks around the layout for aligning a cut to pre-printed material.
-- **Job library:** name a job and **Save** it (stored in this browser); **Load**/**Delete** from the dropdown. Use **Export .json** to carry a job to another computer and **Import .json** to bring it back — handy for repeat orders (boat-reg pairs, USDOT kits).
+- **Your fonts:** Bebas Neue, Anton, Big Shoulders (Bold) and Big Shoulders Stencil are baked in and available on any computer. Need another? **Upload a .ttf/.otf** in the Text tab — it's saved in that browser and shows up in the font list next time.
+- **Upload anything to cut or trace:** the *Import / Trace* tab takes SVG and DXF as vectors, and **any image** (PNG/JPG/GIF/BMP/WEBP) which it **auto-traces** into cut lines. Adjust the **threshold** slider (and **Invert** for light-on-dark art) and hit **Re-trace** until the outline is clean. (For PDF/AI, export to SVG or PNG first.)
+- **Saved designs:** select an object and **Save** it to your library (left panel) — traced logos, imported art, lettering — then **Add to mat** any time to reuse it.
+- **Multiple objects & batch runs:** every add drops a new object; click to select, drag to move. Select one, set **Copies**/**Gap**, and **Make grid** to fill the vinyl with a whole batch in one cut.
+- **Registration marks & job library:** tick *Registration marks* for print-and-cut alignment; save/load whole jobs (mat + settings), and export a `.json` to move a job between computers.
 
 ## Ideas for a future rev (just ask)
 
-True kerf offsetting · automatic nesting to minimise waste · print-and-cut auto-alignment via an optical sensor.
+True kerf offsetting · automatic nesting to minimise waste · print-and-cut auto-alignment via an optical sensor · centerline tracing for single-line engraving fonts.
 
 ---
 
