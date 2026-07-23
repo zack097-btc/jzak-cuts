@@ -29,11 +29,14 @@
   button:disabled{opacity:.45;cursor:not-allowed}
   main{flex:1;display:flex;min-height:0}
   .side{width:320px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:14px}
-  .side.right{border-right:none;border-left:1px solid var(--line);width:280px}
+  .side.right{border-right:none;border-left:1px solid var(--line);width:290px}
   .center{flex:1;display:flex;flex-direction:column;min-width:0;background:#0b0e12}
-  .canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:18px}
-  canvas{background:#12161c;border:1px solid var(--line);border-radius:6px;max-width:100%}
-  .foot{border-top:1px solid var(--line);padding:8px 14px;color:var(--muted);font-size:12px;display:flex;gap:16px;align-items:center}
+  .canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:18px}
+  canvas{background:#12161c;border:1px solid var(--line);border-radius:6px;max-width:100%;cursor:grab}
+  canvas:active{cursor:grabbing}
+  .foot{border-top:1px solid var(--line);padding:8px 14px;color:var(--muted);font-size:12px;display:flex;gap:14px;align-items:center}
+  .foot button{padding:2px 9px;font-size:14px;line-height:1}
+  .zoomctl{display:flex;align-items:center;gap:6px}
   h3{margin:2px 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
   .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}
   label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
@@ -44,7 +47,7 @@
   .row>*{flex:1}
   .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
   .seg{display:flex;gap:6px;flex-wrap:wrap}
-  .seg button{flex:1;min-width:60px}
+  .seg button{flex:1;min-width:56px}
   .rng{display:flex;align-items:center;gap:8px}
   .rng input[type=range]{flex:1}
   .val{min-width:44px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
@@ -63,7 +66,7 @@
 <body>
 <header>
   <div class="brand">JZAK<span>Cuts</span></div>
-  <div class="tag">Vinyl Cutting Studio · JZac Designs</div>
+  <div class="tag">Vinyl Cutting Studio · JZac Designs · v2</div>
   <div class="spacer"></div>
   <div class="status"><div class="dot" id="dot"></div><span id="statusText">Cutter not connected</span></div>
   <button id="connectBtn" class="primary">Connect Cutter</button>
@@ -77,7 +80,7 @@
 
     <div class="tabs">
       <button id="tabText" class="active">Text</button>
-      <button id="tabSVG">Import SVG</button>
+      <button id="tabSVG">Import SVG / DXF</button>
     </div>
 
     <div class="card" id="textCard">
@@ -89,7 +92,7 @@
         <option value="bebasneue/BebasNeue-Regular.ttf">Bebas Neue</option>
         <option value="oswald/static/Oswald-Bold.ttf">Oswald Bold</option>
         <option value="anton/Anton-Regular.ttf">Anton</option>
-        <option value="archivo/Archivo-Bold.ttf" >Archivo Bold</option>
+        <option value="archivo/Archivo-Bold.ttf">Archivo Bold</option>
         <option value="montserrat/static/Montserrat-Bold.ttf">Montserrat Bold</option>
       </select>
       <label>…or upload your own .ttf / .otf</label>
@@ -100,9 +103,9 @@
 
     <div class="card" id="svgCard" style="display:none">
       <h3>Import Vector</h3>
-      <label>SVG file (paths / shapes)</label>
-      <input type="file" id="svgFile" accept=".svg">
-      <div class="hint">Bring in a logo or design as SVG. All strokes/outlines become cut lines.</div>
+      <label>SVG or DXF file</label>
+      <input type="file" id="vecFile" accept=".svg,.dxf">
+      <div class="hint">Logos as <b>SVG</b>, or CAD cut files as <b>DXF</b> (lines, polylines, arcs, circles). It imports at real size — adjust height below.</div>
     </div>
 
     <div class="card">
@@ -126,17 +129,37 @@
 
   <!-- CENTER: PREVIEW -->
   <section class="center">
-    <div class="canvas-wrap"><canvas id="cv" width="900" height="360"></canvas></div>
+    <div class="canvas-wrap"><canvas id="cv" width="900" height="380"></canvas></div>
     <div class="foot">
       <span id="dims">—</span>
-      <span class="spacer" style="flex:1"></span>
-      <span>Material width: <b id="matLabel">24"</b></span>
+      <span style="flex:1"></span>
+      <span class="zoomctl">
+        <button id="zoomOut" title="Zoom out">−</button>
+        <span id="zoomLabel" class="val">100%</span>
+        <button id="zoomIn" title="Zoom in">+</button>
+        <button id="zoomFit">Fit</button>
+      </span>
+      <span>Material: <b id="matLabel">24"</b></span>
       <span id="pathCount">0 paths</span>
     </div>
   </section>
 
   <!-- RIGHT: CUT -->
   <section class="side right">
+    <div class="card">
+      <h3>Material Preset</h3>
+      <select id="preset">
+        <option value="">— choose a material —</option>
+        <option value="oracal651">Oracal 651 · calendered</option>
+        <option value="oracal751">Oracal 751 · cast</option>
+        <option value="htv">HTV · heat-transfer (mirrors)</option>
+        <option value="reflective">Reflective</option>
+        <option value="sandblast">Sandblast / thick</option>
+        <option value="window">Window tint / thin</option>
+      </select>
+      <div class="hint">Sets speed, force, and blade offset to a sane starting point. Always confirm with a Test Cut.</div>
+    </div>
+
     <div class="card">
       <h3>Material</h3>
       <label>Vinyl width (in)</label>
@@ -148,12 +171,15 @@
 
     <div class="card">
       <h3>Cut Settings</h3>
-      <label>Speed <span class="muted" id="spdV">40</span></label>
+      <label>Speed <span id="spdV">40</span></label>
       <div class="rng"><input type="range" id="speed" min="1" max="80" value="40"><span class="val" id="spdOut">40</span></div>
-      <label>Force / Pressure <span id="frcV"></span></label>
+      <label>Force / Pressure</label>
       <div class="rng"><input type="range" id="force" min="1" max="160" value="80"><span class="val" id="frcOut">80</span></div>
       <div class="chk"><input type="checkbox" id="sendVSFS" checked><label for="sendVSFS" style="margin:0">Send speed/force to cutter (VS/FS)</label></div>
-      <div class="hint">Some machines only honor speed/force set on their front panel. Leave this on; if it errors, uncheck and set on the panel.</div>
+      <label>Blade offset / overcut (mm)</label>
+      <input type="number" id="bladeOff" value="0.25" step="0.05" min="0">
+      <div class="chk"><input type="checkbox" id="bladeComp" checked><label for="bladeComp" style="margin:0">Apply corner overcut compensation</label></div>
+      <div class="hint">Overcut extends each closed loop past its start so drag-knife corners cut clean. 0.25&nbsp;mm suits a standard 45° blade; use 0.30 for 60°.</div>
     </div>
 
     <div class="card">
@@ -184,7 +210,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
 <script>
-/* ============================ JZAK Cuts v1 ============================ */
+/* ============================ JZAK Cuts v2 ============================ */
 const FONT_BASE = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/";
 const $ = id => document.getElementById(id);
 
@@ -195,6 +221,7 @@ const state = {
   port: null, writer: null,
   connected: false
 };
+const view = { zoom:1, panx:0, pany:0 };   // canvas view transform
 
 /* ---------- Web Serial support / warning ---------- */
 function checkSerial(){
@@ -213,7 +240,6 @@ async function connect(){
     try{
       await port.open({ baudRate:9600, dataBits:8, stopBits:1, parity:"none", flowControl:"hardware" });
     }catch(e){
-      // some drivers reject hardware flow — fall back
       await port.open({ baudRate:9600, dataBits:8, stopBits:1, parity:"none", flowControl:"none" });
     }
     state.port = port;
@@ -223,7 +249,7 @@ async function connect(){
     $("statusText").textContent = "Cutter connected · 9600 baud";
     $("connectBtn").disabled = true; $("disconnectBtn").disabled = false; $("sendBtn").disabled = false;
   }catch(err){
-    if(err && err.name === "NotFoundError") return; // user cancelled picker
+    if(err && err.name === "NotFoundError") return;
     alert("Could not connect: " + (err.message||err));
   }
 }
@@ -237,11 +263,8 @@ async function disconnect(){
 async function writeToCutter(str){
   if(!state.writer){ alert("Connect the cutter first."); return; }
   const bytes = new TextEncoder().encode(str);
-  // chunk to be gentle on serial buffers
   const CHUNK = 256;
-  for(let i=0;i<bytes.length;i+=CHUNK){
-    await state.writer.write(bytes.slice(i,i+CHUNK));
-  }
+  for(let i=0;i<bytes.length;i+=CHUNK){ await state.writer.write(bytes.slice(i,i+CHUNK)); }
 }
 
 /* ---------- Geometry helpers ---------- */
@@ -268,9 +291,7 @@ function bboxOf(subpaths){
 
 /* ---------- Fonts / Text ---------- */
 function loadFontFromURL(url){
-  return new Promise((res,rej)=>{
-    opentype.load(url,(err,font)=>{ err?rej(err):res(font); });
-  });
+  return new Promise((res,rej)=>{ opentype.load(url,(err,font)=>{ err?rej(err):res(font); }); });
 }
 async function buildText(){
   const text = $("textInput").value;
@@ -279,21 +300,18 @@ async function buildText(){
   try{
     if(!state.font){
       hint.textContent = "Loading font…";
-      const sel = $("fontSelect").value;
-      state.font = await loadFontFromURL(FONT_BASE + sel);
+      state.font = await loadFontFromURL(FONT_BASE + $("fontSelect").value);
     }
   }catch(e){
     hint.innerHTML = "⚠ Couldn't load the web font (offline?). Upload a .ttf/.otf instead.";
     return;
   }
   hint.textContent = "Font ready.";
-  const size = 1000;
-  const otPath = state.font.getPath(text, 0, 0, size, {kerning:true});
+  const otPath = state.font.getPath(text, 0, 0, 1000, {kerning:true});
   const subpaths = flattenOpentype(otPath);
   if(!subpaths.length){ alert("No cut paths generated (empty glyphs?)."); return; }
   state.design = { subpaths, bbox: bboxOf(subpaths), name:"text" };
-  autoWidthFromHeight();
-  draw();
+  resetView(); autoWidthFromHeight(); draw();
 }
 function flattenOpentype(path){
   const N=16, subs=[]; let cur=[], start=null, px=0, py=0;
@@ -315,11 +333,9 @@ function importSVG(file){
     try{
       const doc = new DOMParser().parseFromString(reader.result,"image/svg+xml");
       const svg = doc.documentElement;
-      // offscreen mount so getPointAtLength / getCTM work
       const holder=document.createElement("div");
       holder.style.cssText="position:absolute;left:-99999px;top:-99999px;width:2000px;height:2000px";
       holder.appendChild(svg); document.body.appendChild(holder);
-
       const geoms = svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse");
       const subs=[];
       geoms.forEach(el=>{
@@ -335,9 +351,7 @@ function importSVG(file){
         }
         if(pts.length>1) subs.push(pts);
       });
-
-      // scale svg user units -> inches
-      let unitPerInch = 96; // default px
+      let unitPerInch = 96;
       const wAttr = svg.getAttribute("width")||"";
       const vb = (svg.getAttribute("viewBox")||"").split(/[ ,]+/).map(Number);
       const mm = wAttr.match(/([\d.]+)mm/), inm = wAttr.match(/([\d.]+)in/);
@@ -347,17 +361,66 @@ function importSVG(file){
         if(physIn>0) unitPerInch = userW/physIn;
       }
       document.body.removeChild(holder);
-
       if(!subs.length){ alert("No cuttable paths found in that SVG."); return; }
       const scaled = subs.map(sp=>sp.map(([x,y])=>[x/unitPerInch, y/unitPerInch]));
-      state.design = { subpaths: scaled, bbox: bboxOf(scaled), name:file.name };
-      // switch height to the SVG's natural height so it imports at real size
-      $("heightIn").value = (state.design.bbox.h).toFixed(2);
-      autoWidthFromHeight();
-      draw();
+      loadDesign(scaled, file.name);
     }catch(e){ alert("SVG import failed: "+(e.message||e)); }
   };
   reader.readAsText(file);
+}
+
+/* ---------- DXF import ---------- */
+function parseDXF(text){
+  const rows=text.split(/\r\n|\r|\n/);
+  const pairs=[];
+  for(let i=0;i+1<rows.length;i+=2){ pairs.push([parseInt(rows[i].trim(),10), rows[i+1].trim()]); }
+  const ents=[]; let cur=null;
+  for(const [code,val] of pairs){
+    if(isNaN(code)) continue;
+    if(code===0){ if(cur)ents.push(cur); cur={type:val,c:{}}; }
+    else if(cur){ (cur.c[code]=cur.c[code]||[]).push(val); }
+  }
+  if(cur)ents.push(cur);
+  const num=v=>parseFloat(v);
+  const subs=[]; let poly=null;
+  for(const e of ents){
+    const c=e.c;
+    if(e.type==="LINE" && c[10]&&c[11]){
+      subs.push([[num(c[10][0]),-num(c[20][0])],[num(c[11][0]),-num(c[21][0])]]);
+    } else if(e.type==="LWPOLYLINE" && c[10]){
+      const xs=c[10], ys=c[20]||[]; const p=[];
+      for(let i=0;i<xs.length;i++) p.push([num(xs[i]), -num(ys[i]||0)]);
+      const closed = c[70] && (parseInt(c[70][0],10)&1);
+      if(closed && p.length) p.push(p[0].slice());
+      if(p.length>1) subs.push(p);
+    } else if(e.type==="CIRCLE" && c[10]){
+      const cx=num(c[10][0]),cy=num(c[20][0]),r=num(c[40][0]); const p=[];
+      for(let i=0;i<=64;i++){const a=i/64*2*Math.PI; p.push([cx+r*Math.cos(a), -(cy+r*Math.sin(a))]);}
+      subs.push(p);
+    } else if(e.type==="ARC" && c[10]){
+      const cx=num(c[10][0]),cy=num(c[20][0]),r=num(c[40][0]); let a0=num(c[50][0]),a1=num(c[51][0]);
+      if(a1<a0)a1+=360; const steps=Math.max(8,Math.round((a1-a0)/5)); const p=[];
+      for(let i=0;i<=steps;i++){const a=(a0+(a1-a0)*i/steps)*Math.PI/180; p.push([cx+r*Math.cos(a), -(cy+r*Math.sin(a))]);}
+      subs.push(p);
+    } else if(e.type==="POLYLINE"){ poly=[]; }
+    else if(e.type==="VERTEX" && poly && c[10]){ poly.push([num(c[10][0]), -num(c[20][0])]); }
+    else if(e.type==="SEQEND"){ if(poly && poly.length>1) subs.push(poly); poly=null; }
+  }
+  return subs;
+}
+function importDXF(file){
+  const r=new FileReader();
+  r.onload=()=>{ try{
+      const subs=parseDXF(r.result);
+      if(!subs.length){ alert("No cuttable entities found in that DXF (supports lines, polylines, arcs, circles)."); return; }
+      loadDesign(subs, file.name);
+    }catch(e){ alert("DXF import failed: "+(e.message||e)); } };
+  r.readAsText(file);
+}
+function loadDesign(subs, name){
+  state.design = { subpaths: subs, bbox: bboxOf(subs), name };
+  $("heightIn").value = state.design.bbox.h.toFixed(2);
+  resetView(); autoWidthFromHeight(); draw();
 }
 
 /* ---------- Transform design -> material inches ---------- */
@@ -386,58 +449,78 @@ function transformedPolylines(){
   for(const sp of state.design.subpaths){
     const line=[];
     for(let [x,y] of sp){
-      let nx=(x-minX)*s, ny=(y-minY)*s;     // 0..desW, 0..desH (Y down)
-      if(mir) nx = desW-nx;                   // mirror horizontally
-      // rotate around center
+      let nx=(x-minX)*s, ny=(y-minY)*s;
+      if(mir) nx = desW-nx;
       let dx=nx-cx, dy=ny-cy;
       let rx=dx*Math.cos(rot)-dy*Math.sin(rot);
       let ry=dx*Math.sin(rot)+dy*Math.cos(rot);
       nx=rx+cx; ny=ry+cy;
-      line.push([nx+posX, ny+posY]);          // material inches, Y-down from top
+      line.push([nx+posX, ny+posY]);
     }
     out.push(line);
   }
   return out;
 }
-function transformedBBox(){
-  const pl=transformedPolylines();
-  return bboxOf(pl);
+function transformedBBox(){ return bboxOf(transformedPolylines()); }
+
+/* ---------- Blade offset / overcut compensation ---------- */
+function withOvercut(line){
+  if(!$("bladeComp").checked) return line;
+  const ocIn = (parseFloat($("bladeOff").value||"0")/25.4);
+  if(ocIn<=0 || line.length<3) return line;
+  const a=line[0], last=line[line.length-1];
+  const closed = Math.hypot(last[0]-a[0], last[1]-a[1]) < 0.01;
+  if(!closed) return line;
+  const b=line[1];
+  const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1;
+  return line.concat([[a[0]+dx/L*ocIn, a[1]+dy/L*ocIn]]);
 }
 
-/* ---------- Canvas ---------- */
+/* ---------- Canvas (with zoom + pan) ---------- */
 const cv=$("cv"), ctx=cv.getContext("2d");
-function draw(){
-  const matW=parseFloat($("matWidth").value||"24");   // across (vertical)
+function resetView(){ view.zoom=1; view.panx=0; view.pany=0; updZoomLabel(); }
+function updZoomLabel(){ $("zoomLabel").textContent = Math.round(view.zoom*100)+"%"; }
+function layout(){
+  const matW=parseFloat($("matWidth").value||"24");
   const pl=transformedPolylines();
   const bb=pl.length?bboxOf(pl):{minX:0,minY:0,w:0,h:0};
-  const viewLen=Math.max(24, Math.ceil((bb.minX+bb.w)+3)); // along (horizontal)
-  // fit
+  const viewLen=Math.max(24, Math.ceil((bb.minX+bb.w)+3));
   const W=cv.width, H=cv.height, pad=28;
-  const ppiX=(W-pad*2)/viewLen, ppiY=(H-pad*2)/matW;
-  const ppi=Math.min(ppiX,ppiY);
-  ctx.clearRect(0,0,W,H);
+  const base=Math.min((W-pad*2)/viewLen,(H-pad*2)/matW);
+  return {matW,pl,viewLen,W,H,pad,base};
+}
+function draw(){
+  const L=layout();
+  const ppi=L.base*view.zoom;
+  const ox=L.pad+view.panx, oy=L.pad+view.pany;
+  const pl=L.pl, matW=L.matW, viewLen=L.viewLen;
+  const bb=pl.length?bboxOf(pl):{minX:0,minY:0,w:0,h:0};
+  ctx.clearRect(0,0,L.W,L.H);
+  const mw=viewLen*ppi, mh=matW*ppi;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0,0,L.W,L.H); ctx.clip();
   // material strip
-  const mx=pad, my=pad, mw=viewLen*ppi, mh=matW*ppi;
-  ctx.fillStyle="#0e131a"; ctx.fillRect(mx,my,mw,mh);
-  ctx.strokeStyle="#2a313b"; ctx.strokeRect(mx,my,mw,mh);
-  // inch grid
+  ctx.fillStyle="#0e131a"; ctx.fillRect(ox,oy,mw,mh);
+  ctx.strokeStyle="#2a313b"; ctx.strokeRect(ox,oy,mw,mh);
+  // inch grid + ruler
   ctx.strokeStyle="rgba(255,255,255,.05)"; ctx.fillStyle="#5b6675"; ctx.font="10px sans-serif";
-  for(let i=0;i<=viewLen;i++){const gx=mx+i*ppi; ctx.beginPath();ctx.moveTo(gx,my);ctx.lineTo(gx,my+mh);ctx.stroke(); if(i%2===0)ctx.fillText(i+'"',gx+2,my+12);}
-  for(let j=0;j<=matW;j++){const gy=my+j*ppi; ctx.beginPath();ctx.moveTo(mx,gy);ctx.lineTo(mx+mw,gy);ctx.stroke();}
+  for(let i=0;i<=viewLen;i++){const gx=ox+i*ppi; ctx.beginPath();ctx.moveTo(gx,oy);ctx.lineTo(gx,oy+mh);ctx.stroke(); if(i%2===0)ctx.fillText(i+'"',gx+2,oy+12);}
+  for(let j=0;j<=matW;j++){const gy=oy+j*ppi; ctx.beginPath();ctx.moveTo(ox,gy);ctx.lineTo(ox+mw,gy);ctx.stroke();}
   // weed border
   if($("weed").checked && pl.length){
     const m=0.25;
     ctx.strokeStyle="rgba(90,162,255,.5)"; ctx.setLineDash([5,4]);
-    ctx.strokeRect(mx+(bb.minX-m)*ppi, my+(bb.minY-m)*ppi, (bb.w+2*m)*ppi, (bb.h+2*m)*ppi);
+    ctx.strokeRect(ox+(bb.minX-m)*ppi, oy+(bb.minY-m)*ppi, (bb.w+2*m)*ppi, (bb.h+2*m)*ppi);
     ctx.setLineDash([]);
   }
   // design
   ctx.strokeStyle="#38d39f"; ctx.lineWidth=1.4;
   for(const line of pl){
     ctx.beginPath();
-    line.forEach(([x,y],i)=>{const px=mx+x*ppi,py=my+y*ppi; i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+    line.forEach(([x,y],i)=>{const px=ox+x*ppi,py=oy+y*ppi; i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
     ctx.stroke();
   }
+  ctx.restore();
   $("matLabel").textContent=matW+'"';
   $("pathCount").textContent=pl.length+" paths";
   updateDims();
@@ -447,6 +530,26 @@ function updateDims(){
   const bb=transformedBBox();
   $("dims").textContent = `Design: ${bb.w.toFixed(2)}" × ${bb.h.toFixed(2)}"  @  X ${bb.minX.toFixed(2)}", Y ${bb.minY.toFixed(2)}"`;
 }
+/* wheel zoom (cursor-anchored) */
+cv.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const r=cv.getBoundingClientRect();
+  const sx=cv.width/r.width, sy=cv.height/r.height;
+  const cxp=(e.clientX-r.left)*sx, cyp=(e.clientY-r.top)*sy;
+  const L=layout();
+  const wx=(cxp-L.pad-view.panx)/(L.base*view.zoom);
+  const wy=(cyp-L.pad-view.pany)/(L.base*view.zoom);
+  const factor=e.deltaY<0?1.15:1/1.15;
+  view.zoom=Math.min(24,Math.max(0.15,view.zoom*factor));
+  view.panx=cxp-L.pad-wx*L.base*view.zoom;
+  view.pany=cyp-L.pad-wy*L.base*view.zoom;
+  updZoomLabel(); draw();
+},{passive:false});
+/* drag to pan */
+let drag=null;
+cv.addEventListener("mousedown",e=>{ drag={x:e.clientX,y:e.clientY,px:view.panx,py:view.pany}; });
+window.addEventListener("mousemove",e=>{ if(!drag)return; const r=cv.getBoundingClientRect(); const sx=cv.width/r.width, sy=cv.height/r.height; view.panx=drag.px+(e.clientX-drag.x)*sx; view.pany=drag.py+(e.clientY-drag.y)*sy; draw(); });
+window.addEventListener("mouseup",()=>drag=null);
 
 /* ---------- HPGL ---------- */
 function generateHPGL(){
@@ -467,15 +570,15 @@ function generateHPGL(){
     const vs=Math.max(1,parseInt($("speed").value)); const fs=Math.max(1,parseInt($("force").value));
     s+=`VS${vs};FS${fs};`;
   }
-  // weed border first (so it cuts around, easier to weed)
   if($("weed").checked){
     const m=0.25;
     const c=[[bb.minX-m,bb.minY-m],[bb.minX+bb.w+m,bb.minY-m],[bb.minX+bb.w+m,bb.minY+bb.h+m],[bb.minX-m,bb.minY+bb.h+m],[bb.minX-m,bb.minY-m]];
     const [sx,sy]=map(c[0][0],c[0][1]); s+=`PU${sx},${sy};PD`;
     s+=c.slice(1).map(([x,y])=>{const[X,Y]=map(x,y);return X+","+Y;}).join(",")+";";
   }
-  for(const line of pl){
+  for(let line of pl){
     if(line.length<2) continue;
+    line=withOvercut(line);
     const [sx,sy]=map(line[0][0],line[0][1]);
     s+=`PU${sx},${sy};PD`;
     s+=line.slice(1).map(([x,y])=>{const[X,Y]=map(x,y);return X+","+Y;}).join(",")+";";
@@ -488,7 +591,6 @@ function testCutHPGL(){
   const u=v=>Math.round(v*spi);
   let s="IN;SP1;";
   if($("sendVSFS").checked){ s+=`VS${parseInt($("speed").value)};FS${parseInt($("force").value)};`; }
-  // 1" square with an inner triangle at origin+0.25"
   const o=0.25;
   s+=`PU${u(o)},${u(o)};PD${u(o+1)},${u(o)},${u(o+1)},${u(o+1)},${u(o)},${u(o+1)},${u(o)},${u(o)};`;
   s+=`PU${u(o+0.25)},${u(o+0.25)};PD${u(o+0.75)},${u(o+0.25)},${u(o+0.5)},${u(o+0.75)},${u(o+0.25)},${u(o+0.25)};`;
@@ -504,20 +606,35 @@ function download(name,text,type){
 }
 function exportSVG(){
   const pl=transformedPolylines(); if(!pl.length){alert("Nothing to export.");return;}
-  const bb=bboxOf(pl); const S=96;
-  let paths=pl.map(line=>{
-    return '<polyline fill="none" stroke="black" stroke-width="0.01in" points="'+
-      line.map(([x,y])=>((x-bb.minX)*1).toFixed(4)+","+((y-bb.minY)*1).toFixed(4)).join(" ")+'"/>';
-  }).join("\n");
+  const bb=bboxOf(pl);
+  let paths=pl.map(line=>'<polyline fill="none" stroke="black" stroke-width="0.01in" points="'+
+      line.map(([x,y])=>((x-bb.minX)).toFixed(4)+","+((y-bb.minY)).toFixed(4)).join(" ")+'"/>').join("\n");
   const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${bb.w.toFixed(3)}in" height="${bb.h.toFixed(3)}in" viewBox="0 0 ${bb.w.toFixed(3)} ${bb.h.toFixed(3)}">\n${paths}\n</svg>`;
   download("jzak-cut.svg", svg, "image/svg+xml");
+}
+
+/* ---------- Material presets ---------- */
+const PRESETS={
+  oracal651:{speed:40,force:80,off:0.25,mirror:false},
+  oracal751:{speed:30,force:70,off:0.25,mirror:false},
+  htv:{speed:30,force:60,off:0.25,mirror:true},
+  reflective:{speed:20,force:120,off:0.30,mirror:false},
+  sandblast:{speed:15,force:150,off:0.30,mirror:false},
+  window:{speed:40,force:50,off:0.25,mirror:false}
+};
+function applyPreset(k){
+  const p=PRESETS[k]; if(!p) return;
+  $("speed").value=p.speed; $("spdOut").textContent=p.speed; $("spdV").textContent=p.speed;
+  $("force").value=p.force; $("frcOut").textContent=p.force;
+  $("bladeOff").value=p.off; $("mirror").checked=p.mirror;
+  draw();
 }
 
 /* ---------- Wire up ---------- */
 $("connectBtn").onclick=connect;
 $("disconnectBtn").onclick=disconnect;
-$("tabText").onclick=()=>{setTab("text");};
-$("tabSVG").onclick=()=>{setTab("svg");};
+$("tabText").onclick=()=>setTab("text");
+$("tabSVG").onclick=()=>setTab("svg");
 function setTab(t){
   $("tabText").classList.toggle("active",t==="text");
   $("tabSVG").classList.toggle("active",t==="svg");
@@ -532,14 +649,23 @@ $("fontFile").onchange=e=>{
   r.onload=()=>{ try{ state.font=opentype.parse(r.result); $("fontHint").textContent="Custom font loaded: "+f.name; }catch(err){ alert("Couldn't read that font file."); } };
   r.readAsArrayBuffer(f);
 };
-$("svgFile").onchange=e=>{ const f=e.target.files[0]; if(f) importSVG(f); };
+$("vecFile").onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const ext=(f.name.split(".").pop()||"").toLowerCase();
+  if(ext==="dxf") importDXF(f); else importSVG(f);
+};
 $("heightIn").oninput=()=>{ autoWidthFromHeight(); draw(); };
 $("posX").oninput=draw; $("posY").oninput=draw;
 $("matWidth").oninput=draw; $("stepsPerIn").oninput=draw;
 $("mirror").onchange=draw; $("weed").onchange=draw; $("flipX").onchange=draw; $("flipY").onchange=draw;
+$("bladeOff").oninput=draw; $("bladeComp").onchange=draw;
+$("preset").onchange=e=>applyPreset(e.target.value);
 document.querySelectorAll("[data-rot]").forEach(b=>b.onclick=()=>{ state.rotation=parseInt(b.dataset.rot); autoWidthFromHeight(); draw(); });
 $("speed").oninput=()=>{$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;};
 $("force").oninput=()=>{$("frcOut").textContent=$("force").value;};
+$("zoomIn").onclick=()=>{ view.zoom=Math.min(24,view.zoom*1.25); updZoomLabel(); draw(); };
+$("zoomOut").onclick=()=>{ view.zoom=Math.max(0.15,view.zoom/1.25); updZoomLabel(); draw(); };
+$("zoomFit").onclick=()=>{ resetView(); draw(); };
 $("sendBtn").onclick=async()=>{ const h=generateHPGL(); if(!h){alert("Build a design first.");return;} await writeToCutter(h); };
 $("testBtn").onclick=async()=>{ if(!state.connected){alert("Connect the cutter to run a test cut.");return;} await writeToCutter(testCutHPGL()); };
 $("pltBtn").onclick=()=>{ const h=generateHPGL(); if(!h){alert("Build a design first.");return;} download("jzak-cut.plt",h); };
@@ -550,6 +676,7 @@ $("svgOutBtn").onclick=exportSVG;
 /* init */
 checkSerial();
 setTab("text");
+updZoomLabel();
 buildText().catch(()=>{});
 draw();
 </script>

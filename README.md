@@ -45,13 +45,20 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What v1 does
+## What it does (v2)
 
-Text-to-cut with custom fonts · SVG import · on-material layout with size/position/rotate/mirror · weed border · HPGL generation · direct-to-cutter over Web Serial · `.plt` and `.svg` export · test cut.
+Text-to-cut with custom fonts · **SVG *and* DXF import** (lines, polylines, arcs, circles) · on-material layout with size/position/rotate/mirror · **canvas zoom & pan** (mouse-wheel to zoom at the cursor, drag to pan, +/−/Fit buttons) · **blade-offset / corner-overcut compensation** (mm, so drag-knife corners cut clean) · **material presets** (Oracal 651, Oracal 751, HTV, reflective, sandblast, window tint — each sets speed/force/offset) · weed border · HPGL generation · direct-to-cutter over Web Serial · `.plt` and `.svg` export · test cut.
 
-## Ideas for v2 (just ask)
+### Using the new v2 features
 
-Multi-object layouts and nesting · true blade-offset compensation · DXF import · registration marks / print-and-cut · saved job library · per-material presets (Oracal 651, HTV, reflective).
+- **Zoom / pan:** mouse-wheel over the canvas zooms toward the cursor; click-drag pans; the footer shows the zoom % with `−`, `+`, and `Fit`.
+- **DXF import:** the *Import SVG / DXF* tab now takes `.dxf` too — it imports at real size, then scale with Height.
+- **Blade offset / overcut:** set the blade offset in mm (0.25 for a 45° blade, 0.30 for 60°) and leave "Apply corner overcut compensation" on so each closed loop cuts slightly past its start for clean corners.
+- **Material presets:** pick a material at the top of the right panel to load a sensible speed/force/offset starting point — always confirm with a Test Cut.
+
+## Ideas for v3 (just ask)
+
+Multi-object layouts and nesting · true kerf offsetting · registration marks / print-and-cut · saved job library.
 
 ---
 
