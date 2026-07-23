@@ -52,7 +52,7 @@ Text-to-cut with **your fonts built in** · **upload any file to cut or trace** 
 ### Using the v4 features
 
 - **Your fonts:** Bebas Neue, Anton, Big Shoulders (Bold) and Big Shoulders Stencil are baked in and available on any computer. Need another? **Upload a .ttf/.otf** in the Text tab — it's saved in that browser and shows up in the font list next time.
-- **Upload anything to cut or trace:** the *Import / Trace* tab takes SVG and DXF as vectors, and **any image** (PNG/JPG/GIF/BMP/WEBP) which it **auto-traces** into cut lines. Adjust the **threshold** slider (and **Invert** for light-on-dark art) and hit **Re-trace** until the outline is clean. (For PDF/AI, export to SVG or PNG first.)
+- **Upload anything to cut or trace:** the *Import / Trace* tab takes SVG and DXF as vectors, **any image** (PNG/JPG/GIF/BMP/WEBP), and Silhouette **.studio3** files — all auto-traced into cut lines. Adjust the **threshold** slider (and **Invert** for light-on-dark art) and hit **Re-trace** until the outline is clean. (.studio3 is a closed format, so it traces the file's embedded preview image; for PDF/AI, export to SVG or PNG first.)
 - **Saved designs:** select an object and **Save** it to your library (left panel) — traced logos, imported art, lettering — then **Add to mat** any time to reuse it.
 - **Multiple objects & batch runs:** every add drops a new object; click to select, drag to move. Select one, set **Copies**/**Gap**, and **Make grid** to fill the vinyl with a whole batch in one cut.
 - **Registration marks & job library:** tick *Registration marks* for print-and-cut alignment; save/load whole jobs (mat + settings), and export a `.json` to move a job between computers.

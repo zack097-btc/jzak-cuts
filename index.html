@@ -95,15 +95,15 @@
 
     <div class="card" id="svgCard" style="display:none">
       <h3>Import / Trace</h3>
-      <label>Any file — vector or image</label>
-      <input type="file" id="vecFile" accept=".svg,.dxf,.png,.jpg,.jpeg,.gif,.bmp,.webp">
+      <label>Any file — vector, image, or Silhouette</label>
+      <input type="file" id="vecFile" accept=".svg,.dxf,.png,.jpg,.jpeg,.gif,.bmp,.webp,.studio,.studio3">
       <div id="traceCtl" style="display:none">
         <label>Trace threshold <span id="thV"></span></label>
         <div class="rng"><input type="range" id="thresh" min="1" max="254" value="128"><span class="val" id="thOut">128</span></div>
         <div class="chk"><input type="checkbox" id="traceInvert"><label for="traceInvert" style="margin:0">Invert (light shape on dark)</label></div>
         <div class="btns"><button id="retraceBtn" class="blue" style="flex:1">Re-trace</button></div>
       </div>
-      <div class="hint">SVG/DXF import as vectors. PNG/JPG/GIF/BMP/WEBP are auto-traced into cut lines — tune the threshold and Re-trace. (PDF/AI: export to SVG or PNG first.)</div>
+      <div class="hint">SVG/DXF import as vectors. Images (PNG/JPG/GIF/BMP/WEBP) and Silhouette <b>.studio3</b> files are auto-traced into cut lines — tune the threshold and Re-trace. (.studio3 traces its embedded preview; PDF/AI: export to SVG or PNG first.)</div>
     </div>
 
     <div class="card">
@@ -332,14 +332,27 @@ function importDXF(file){ const r=new FileReader(); r.onload=()=>{ try{ const su
 
 /* ---- Image trace ---- */
 let traceData=null,lastTraceId=null;
-function onVecFile(f){ const ext=(f.name.split(".").pop()||"").toLowerCase();
-  if(ext==="dxf"){importDXF(f);return;} if(ext==="svg"){importSVG(f);return;}
-  if(["png","jpg","jpeg","gif","bmp","webp"].indexOf(ext)<0){ alert("Unsupported file. Use SVG, DXF, or an image (PNG/JPG/GIF/BMP/WEBP). For PDF/AI, export to SVG or PNG first."); return; }
-  const url=URL.createObjectURL(f),img=new Image();
+function loadImageForTrace(url){ const img=new Image();
   img.onload=()=>{ URL.revokeObjectURL(url); const maxD=1000,sc=Math.min(1,maxD/Math.max(img.width,img.height)); const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
     const c=document.createElement("canvas"); c.width=w;c.height=h; const cx=c.getContext("2d"); cx.fillStyle="#fff"; cx.fillRect(0,0,w,h); cx.drawImage(img,0,0,w,h);
     traceData=cx.getImageData(0,0,w,h); $("traceCtl").style.display=""; $("thV").textContent="("+$("thresh").value+")"; lastTraceId=null; traceRun(false); };
   img.onerror=()=>alert("Couldn't read that image."); img.src=url;
+}
+function extractLargestPNG(buf){ const u=new Uint8Array(buf),sig=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]; let best=null;
+  for(let i=0;i+8<u.length;i++){ let m=true; for(let k=0;k<8;k++)if(u[i+k]!==sig[k]){m=false;break;} if(!m)continue;
+    let end=-1; for(let j=i+8;j+8<=u.length;j++){ if(u[j]===0x49&&u[j+1]===0x45&&u[j+2]===0x4e&&u[j+3]===0x44){end=j+8;break;} }
+    if(end>0){ if(!best||end-i>best.len)best={s:i,e:end,len:end-i}; i=end; } }
+  return best?u.slice(best.s,best.e):null;
+}
+function studioImport(f){ const r=new FileReader(); r.onload=()=>{ const png=extractLargestPNG(r.result);
+  if(!png){ alert("Couldn't find an image inside that .studio3 (proprietary format). Open it in Silhouette Studio and export a PNG or SVG, and I'll cut that."); return; }
+  loadImageForTrace(URL.createObjectURL(new Blob([png],{type:"image/png"}))); };
+  r.onerror=()=>alert("Couldn't read that file."); r.readAsArrayBuffer(f); }
+function onVecFile(f){ const ext=(f.name.split(".").pop()||"").toLowerCase();
+  if(ext==="dxf"){importDXF(f);return;} if(ext==="svg"){importSVG(f);return;}
+  if(ext==="studio3"||ext==="studio"){ studioImport(f); return; }
+  if(["png","jpg","jpeg","gif","bmp","webp"].indexOf(ext)<0){ alert("Unsupported file. Use SVG, DXF, an image (PNG/JPG/GIF/BMP/WEBP), or a Silhouette .studio3. For PDF/AI, export to SVG or PNG first."); return; }
+  loadImageForTrace(URL.createObjectURL(f));
 }
 function binarize(src,thr,invert){ const d=new Uint8ClampedArray(src.data);
   for(let i=0;i<d.length;i+=4){ const lum=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; let dark=lum<thr; if(invert)dark=!dark; const v=dark?0:255; d[i]=d[i+1]=d[i+2]=v; d[i+3]=255; }
