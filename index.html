@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JZAK Cuts — Vinyl Cutting Studio</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b21; --panel2:#1e242c; --line:#2a313b; --ink:#e8ebef;
+    --muted:#9aa4b1; --accent:#38d39f; --accent2:#5aa2ff; --warn:#ffcf5a; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .brand{font-weight:800;letter-spacing:.02em;font-size:18px}
+  .brand span{color:var(--accent)}
+  .tag{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .status{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 3px rgba(255,107,107,.15)}
+  .dot.on{background:var(--accent);box-shadow:0 0 0 3px rgba(56,211,159,.15)}
+  button{font:inherit;color:var(--ink);background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 12px;cursor:pointer}
+  button:hover{border-color:#3a4450}
+  button.primary{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:700}
+  button.blue{background:var(--accent2);color:#04121f;border-color:var(--accent2);font-weight:700}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  main{flex:1;display:flex;min-height:0}
+  .side{width:320px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:14px}
+  .side.right{border-right:none;border-left:1px solid var(--line);width:280px}
+  .center{flex:1;display:flex;flex-direction:column;min-width:0;background:#0b0e12}
+  .canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:18px}
+  canvas{background:#12161c;border:1px solid var(--line);border-radius:6px;max-width:100%}
+  .foot{border-top:1px solid var(--line);padding:8px 14px;color:var(--muted);font-size:12px;display:flex;gap:16px;align-items:center}
+  h3{margin:2px 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input[type=text],input[type=number],select,textarea{width:100%;background:#0c1015;border:1px solid var(--line);
+    color:var(--ink);border-radius:7px;padding:7px 9px;font:inherit}
+  textarea{resize:vertical;min-height:52px}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:60px}
+  .rng{display:flex;align-items:center;gap:8px}
+  .rng input[type=range]{flex:1}
+  .val{min-width:44px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.45}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tabs button{flex:1}
+  .tabs button.active{background:var(--accent2);color:#04121f;border-color:var(--accent2);font-weight:700}
+  .chk{display:flex;align-items:center;gap:8px;margin:8px 0}
+  .chk input{width:auto}
+  .warnbar{background:rgba(255,207,90,.08);border:1px solid rgba(255,207,90,.35);color:#ffe9ab;
+    padding:8px 10px;border-radius:8px;font-size:12px;margin-bottom:12px;display:none}
+  .warnbar.show{display:block}
+  code{background:#0c1015;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">JZAK<span>Cuts</span></div>
+  <div class="tag">Vinyl Cutting Studio · JZac Designs</div>
+  <div class="spacer"></div>
+  <div class="status"><div class="dot" id="dot"></div><span id="statusText">Cutter not connected</span></div>
+  <button id="connectBtn" class="primary">Connect Cutter</button>
+  <button id="disconnectBtn" disabled>Disconnect</button>
+</header>
+
+<main>
+  <!-- LEFT: DESIGN -->
+  <section class="side">
+    <div class="warnbar" id="serialWarn"></div>
+
+    <div class="tabs">
+      <button id="tabText" class="active">Text</button>
+      <button id="tabSVG">Import SVG</button>
+    </div>
+
+    <div class="card" id="textCard">
+      <h3>Lettering</h3>
+      <label>Text</label>
+      <textarea id="textInput" placeholder="Type your text…">JUDD LEE'S TIRE</textarea>
+      <label>Font</label>
+      <select id="fontSelect">
+        <option value="bebasneue/BebasNeue-Regular.ttf">Bebas Neue</option>
+        <option value="oswald/static/Oswald-Bold.ttf">Oswald Bold</option>
+        <option value="anton/Anton-Regular.ttf">Anton</option>
+        <option value="archivo/Archivo-Bold.ttf" >Archivo Bold</option>
+        <option value="montserrat/static/Montserrat-Bold.ttf">Montserrat Bold</option>
+      </select>
+      <label>…or upload your own .ttf / .otf</label>
+      <input type="file" id="fontFile" accept=".ttf,.otf">
+      <div class="btns"><button id="buildTextBtn" class="blue">Build Lettering</button></div>
+      <div class="hint" id="fontHint">Default fonts load from the web. Uploaded fonts work fully offline.</div>
+    </div>
+
+    <div class="card" id="svgCard" style="display:none">
+      <h3>Import Vector</h3>
+      <label>SVG file (paths / shapes)</label>
+      <input type="file" id="svgFile" accept=".svg">
+      <div class="hint">Bring in a logo or design as SVG. All strokes/outlines become cut lines.</div>
+    </div>
+
+    <div class="card">
+      <h3>Size &amp; Position</h3>
+      <div class="row">
+        <div><label>Height (in)</label><input type="number" id="heightIn" value="3" step="0.1" min="0.1"></div>
+        <div><label>Width (in)</label><input type="number" id="widthIn" value="0" step="0.1" min="0" readonly></div>
+      </div>
+      <div class="row">
+        <div><label>Pos X — along length (in)</label><input type="number" id="posX" value="1" step="0.1"></div>
+        <div><label>Pos Y — across width (in)</label><input type="number" id="posY" value="1" step="0.1"></div>
+      </div>
+      <label>Rotate</label>
+      <div class="seg">
+        <button data-rot="0">0°</button><button data-rot="90">90°</button>
+        <button data-rot="180">180°</button><button data-rot="270">270°</button>
+      </div>
+      <div class="chk"><input type="checkbox" id="mirror"><label for="mirror" style="margin:0">Mirror (heat-transfer vinyl / HTV)</label></div>
+    </div>
+  </section>
+
+  <!-- CENTER: PREVIEW -->
+  <section class="center">
+    <div class="canvas-wrap"><canvas id="cv" width="900" height="360"></canvas></div>
+    <div class="foot">
+      <span id="dims">—</span>
+      <span class="spacer" style="flex:1"></span>
+      <span>Material width: <b id="matLabel">24"</b></span>
+      <span id="pathCount">0 paths</span>
+    </div>
+  </section>
+
+  <!-- RIGHT: CUT -->
+  <section class="side right">
+    <div class="card">
+      <h3>Material</h3>
+      <label>Vinyl width (in)</label>
+      <input type="number" id="matWidth" value="24" step="0.5" min="1">
+      <label>Steps per inch (calibration)</label>
+      <input type="number" id="stepsPerIn" value="1016" step="1" min="100">
+      <div class="hint">1016 is HPGL standard. If a 10" cut measures off, adjust proportionally, then re-cut a test.</div>
+    </div>
+
+    <div class="card">
+      <h3>Cut Settings</h3>
+      <label>Speed <span class="muted" id="spdV">40</span></label>
+      <div class="rng"><input type="range" id="speed" min="1" max="80" value="40"><span class="val" id="spdOut">40</span></div>
+      <label>Force / Pressure <span id="frcV"></span></label>
+      <div class="rng"><input type="range" id="force" min="1" max="160" value="80"><span class="val" id="frcOut">80</span></div>
+      <div class="chk"><input type="checkbox" id="sendVSFS" checked><label for="sendVSFS" style="margin:0">Send speed/force to cutter (VS/FS)</label></div>
+      <div class="hint">Some machines only honor speed/force set on their front panel. Leave this on; if it errors, uncheck and set on the panel.</div>
+    </div>
+
+    <div class="card">
+      <h3>Output Orientation</h3>
+      <div class="chk"><input type="checkbox" id="flipX"><label for="flipX" style="margin:0">Flip feed (X)</label></div>
+      <div class="chk"><input type="checkbox" id="flipY" checked><label for="flipY" style="margin:0">Flip across (Y)</label></div>
+      <div class="chk"><input type="checkbox" id="weed" checked><label for="weed" style="margin:0">Add weed border</label></div>
+      <div class="hint">Origin conventions vary by machine — run a Test Cut first and toggle these until it matches.</div>
+    </div>
+
+    <div class="card">
+      <h3>Cut</h3>
+      <div class="btns">
+        <button id="sendBtn" class="primary" style="flex:1" disabled>Send to Cutter</button>
+      </div>
+      <div class="btns">
+        <button id="testBtn" style="flex:1">Test Cut</button>
+        <button id="pltBtn" style="flex:1">Download .plt</button>
+      </div>
+      <div class="btns">
+        <button id="svgOutBtn" style="flex:1">Export SVG</button>
+        <button id="hpglBtn" style="flex:1">View HPGL</button>
+      </div>
+      <div class="hint">No cutter here? Download the <code>.plt</code> and send it through any spooler (e.g. VinylMaster) on the shop PC.</div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+<script>
+/* ============================ JZAK Cuts v1 ============================ */
+const FONT_BASE = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/";
+const $ = id => document.getElementById(id);
+
+const state = {
+  design: null,          // { subpaths:[[[x,y],...]], bbox:{minX,minY,w,h}, name }
+  font: null,
+  rotation: 0,
+  port: null, writer: null,
+  connected: false
+};
+
+/* ---------- Web Serial support / warning ---------- */
+function checkSerial(){
+  const warn = $("serialWarn");
+  if(!("serial" in navigator)){
+    warn.classList.add("show");
+    warn.innerHTML = "⚠ This browser can't reach the cutter (Web Serial needed). Use <b>Chrome</b> or <b>Edge</b> on a computer. You can still design here and Download .plt.";
+    $("connectBtn").disabled = true;
+  }
+}
+
+/* ---------- Connection ---------- */
+async function connect(){
+  try{
+    const port = await navigator.serial.requestPort();
+    try{
+      await port.open({ baudRate:9600, dataBits:8, stopBits:1, parity:"none", flowControl:"hardware" });
+    }catch(e){
+      // some drivers reject hardware flow — fall back
+      await port.open({ baudRate:9600, dataBits:8, stopBits:1, parity:"none", flowControl:"none" });
+    }
+    state.port = port;
+    state.writer = port.writable.getWriter();
+    state.connected = true;
+    $("dot").classList.add("on");
+    $("statusText").textContent = "Cutter connected · 9600 baud";
+    $("connectBtn").disabled = true; $("disconnectBtn").disabled = false; $("sendBtn").disabled = false;
+  }catch(err){
+    if(err && err.name === "NotFoundError") return; // user cancelled picker
+    alert("Could not connect: " + (err.message||err));
+  }
+}
+async function disconnect(){
+  try{ if(state.writer){ state.writer.releaseLock(); } if(state.port){ await state.port.close(); } }catch(e){}
+  state.port=null; state.writer=null; state.connected=false;
+  $("dot").classList.remove("on");
+  $("statusText").textContent = "Cutter not connected";
+  $("connectBtn").disabled=false; $("disconnectBtn").disabled=true; $("sendBtn").disabled=true;
+}
+async function writeToCutter(str){
+  if(!state.writer){ alert("Connect the cutter first."); return; }
+  const bytes = new TextEncoder().encode(str);
+  // chunk to be gentle on serial buffers
+  const CHUNK = 256;
+  for(let i=0;i<bytes.length;i+=CHUNK){
+    await state.writer.write(bytes.slice(i,i+CHUNK));
+  }
+}
+
+/* ---------- Geometry helpers ---------- */
+function sampleCubic(p0,p1,p2,p3,n){
+  const out=[];
+  for(let i=1;i<=n;i++){const t=i/n,mt=1-t;
+    out.push([mt*mt*mt*p0[0]+3*mt*mt*t*p1[0]+3*mt*t*t*p2[0]+t*t*t*p3[0],
+              mt*mt*mt*p0[1]+3*mt*mt*t*p1[1]+3*mt*t*t*p2[1]+t*t*t*p3[1]]);}
+  return out;
+}
+function sampleQuad(p0,p1,p2,n){
+  const out=[];
+  for(let i=1;i<=n;i++){const t=i/n,mt=1-t;
+    out.push([mt*mt*p0[0]+2*mt*t*p1[0]+t*t*p2[0], mt*mt*p0[1]+2*mt*t*p1[1]+t*t*p2[1]]);}
+  return out;
+}
+function bboxOf(subpaths){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const sp of subpaths) for(const [x,y] of sp){
+    if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y;
+  }
+  return {minX,minY,w:maxX-minX,h:maxY-minY};
+}
+
+/* ---------- Fonts / Text ---------- */
+function loadFontFromURL(url){
+  return new Promise((res,rej)=>{
+    opentype.load(url,(err,font)=>{ err?rej(err):res(font); });
+  });
+}
+async function buildText(){
+  const text = $("textInput").value;
+  if(!text.trim()){ alert("Type some text first."); return; }
+  const hint=$("fontHint");
+  try{
+    if(!state.font){
+      hint.textContent = "Loading font…";
+      const sel = $("fontSelect").value;
+      state.font = await loadFontFromURL(FONT_BASE + sel);
+    }
+  }catch(e){
+    hint.innerHTML = "⚠ Couldn't load the web font (offline?). Upload a .ttf/.otf instead.";
+    return;
+  }
+  hint.textContent = "Font ready.";
+  const size = 1000;
+  const otPath = state.font.getPath(text, 0, 0, size, {kerning:true});
+  const subpaths = flattenOpentype(otPath);
+  if(!subpaths.length){ alert("No cut paths generated (empty glyphs?)."); return; }
+  state.design = { subpaths, bbox: bboxOf(subpaths), name:"text" };
+  autoWidthFromHeight();
+  draw();
+}
+function flattenOpentype(path){
+  const N=16, subs=[]; let cur=[], start=null, px=0, py=0;
+  for(const c of path.commands){
+    if(c.type==="M"){ if(cur.length)subs.push(cur); cur=[[c.x,c.y]]; start=[c.x,c.y]; px=c.x;py=c.y; }
+    else if(c.type==="L"){ cur.push([c.x,c.y]); px=c.x;py=c.y; }
+    else if(c.type==="C"){ sampleCubic([px,py],[c.x1,c.y1],[c.x2,c.y2],[c.x,c.y],N).forEach(p=>cur.push(p)); px=c.x;py=c.y; }
+    else if(c.type==="Q"){ sampleQuad([px,py],[c.x1,c.y1],[c.x,c.y],N).forEach(p=>cur.push(p)); px=c.x;py=c.y; }
+    else if(c.type==="Z"){ if(start)cur.push([start[0],start[1]]); if(cur.length)subs.push(cur); cur=[]; }
+  }
+  if(cur.length)subs.push(cur);
+  return subs;
+}
+
+/* ---------- SVG import ---------- */
+function importSVG(file){
+  const reader=new FileReader();
+  reader.onload = ()=>{
+    try{
+      const doc = new DOMParser().parseFromString(reader.result,"image/svg+xml");
+      const svg = doc.documentElement;
+      // offscreen mount so getPointAtLength / getCTM work
+      const holder=document.createElement("div");
+      holder.style.cssText="position:absolute;left:-99999px;top:-99999px;width:2000px;height:2000px";
+      holder.appendChild(svg); document.body.appendChild(holder);
+
+      const geoms = svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse");
+      const subs=[];
+      geoms.forEach(el=>{
+        let total=0; try{ total = el.getTotalLength(); }catch(e){ return; }
+        if(!total || !isFinite(total)) return;
+        const step = Math.max(0.4, total/400);
+        const ctm = el.getCTM();
+        const pts=[];
+        for(let d=0; d<=total; d+=step){
+          let p = el.getPointAtLength(d);
+          if(ctm){ p = p.matrixTransform ? p.matrixTransform(ctm) : p; }
+          pts.push([p.x,p.y]);
+        }
+        if(pts.length>1) subs.push(pts);
+      });
+
+      // scale svg user units -> inches
+      let unitPerInch = 96; // default px
+      const wAttr = svg.getAttribute("width")||"";
+      const vb = (svg.getAttribute("viewBox")||"").split(/[ ,]+/).map(Number);
+      const mm = wAttr.match(/([\d.]+)mm/), inm = wAttr.match(/([\d.]+)in/);
+      if(vb.length===4 && (mm||inm)){
+        const userW = vb[2];
+        const physIn = mm ? parseFloat(mm[1])/25.4 : parseFloat(inm[1]);
+        if(physIn>0) unitPerInch = userW/physIn;
+      }
+      document.body.removeChild(holder);
+
+      if(!subs.length){ alert("No cuttable paths found in that SVG."); return; }
+      const scaled = subs.map(sp=>sp.map(([x,y])=>[x/unitPerInch, y/unitPerInch]));
+      state.design = { subpaths: scaled, bbox: bboxOf(scaled), name:file.name };
+      // switch height to the SVG's natural height so it imports at real size
+      $("heightIn").value = (state.design.bbox.h).toFixed(2);
+      autoWidthFromHeight();
+      draw();
+    }catch(e){ alert("SVG import failed: "+(e.message||e)); }
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- Transform design -> material inches ---------- */
+function currentScale(){
+  if(!state.design) return 1;
+  const h = state.design.bbox.h || 1;
+  return parseFloat($("heightIn").value||"1")/h;
+}
+function autoWidthFromHeight(){
+  if(!state.design) return;
+  const s=currentScale();
+  $("widthIn").value = (state.design.bbox.w*s).toFixed(2);
+  updateDims();
+}
+function transformedPolylines(){
+  if(!state.design) return [];
+  const s=currentScale();
+  const {minX,minY,w,h}=state.design.bbox;
+  const desW=w*s, desH=h*s;
+  const rot=state.rotation*Math.PI/180;
+  const mir=$("mirror").checked;
+  const posX=parseFloat($("posX").value||"0");
+  const posY=parseFloat($("posY").value||"0");
+  const cx=desW/2, cy=desH/2;
+  const out=[];
+  for(const sp of state.design.subpaths){
+    const line=[];
+    for(let [x,y] of sp){
+      let nx=(x-minX)*s, ny=(y-minY)*s;     // 0..desW, 0..desH (Y down)
+      if(mir) nx = desW-nx;                   // mirror horizontally
+      // rotate around center
+      let dx=nx-cx, dy=ny-cy;
+      let rx=dx*Math.cos(rot)-dy*Math.sin(rot);
+      let ry=dx*Math.sin(rot)+dy*Math.cos(rot);
+      nx=rx+cx; ny=ry+cy;
+      line.push([nx+posX, ny+posY]);          // material inches, Y-down from top
+    }
+    out.push(line);
+  }
+  return out;
+}
+function transformedBBox(){
+  const pl=transformedPolylines();
+  return bboxOf(pl);
+}
+
+/* ---------- Canvas ---------- */
+const cv=$("cv"), ctx=cv.getContext("2d");
+function draw(){
+  const matW=parseFloat($("matWidth").value||"24");   // across (vertical)
+  const pl=transformedPolylines();
+  const bb=pl.length?bboxOf(pl):{minX:0,minY:0,w:0,h:0};
+  const viewLen=Math.max(24, Math.ceil((bb.minX+bb.w)+3)); // along (horizontal)
+  // fit
+  const W=cv.width, H=cv.height, pad=28;
+  const ppiX=(W-pad*2)/viewLen, ppiY=(H-pad*2)/matW;
+  const ppi=Math.min(ppiX,ppiY);
+  ctx.clearRect(0,0,W,H);
+  // material strip
+  const mx=pad, my=pad, mw=viewLen*ppi, mh=matW*ppi;
+  ctx.fillStyle="#0e131a"; ctx.fillRect(mx,my,mw,mh);
+  ctx.strokeStyle="#2a313b"; ctx.strokeRect(mx,my,mw,mh);
+  // inch grid
+  ctx.strokeStyle="rgba(255,255,255,.05)"; ctx.fillStyle="#5b6675"; ctx.font="10px sans-serif";
+  for(let i=0;i<=viewLen;i++){const gx=mx+i*ppi; ctx.beginPath();ctx.moveTo(gx,my);ctx.lineTo(gx,my+mh);ctx.stroke(); if(i%2===0)ctx.fillText(i+'"',gx+2,my+12);}
+  for(let j=0;j<=matW;j++){const gy=my+j*ppi; ctx.beginPath();ctx.moveTo(mx,gy);ctx.lineTo(mx+mw,gy);ctx.stroke();}
+  // weed border
+  if($("weed").checked && pl.length){
+    const m=0.25;
+    ctx.strokeStyle="rgba(90,162,255,.5)"; ctx.setLineDash([5,4]);
+    ctx.strokeRect(mx+(bb.minX-m)*ppi, my+(bb.minY-m)*ppi, (bb.w+2*m)*ppi, (bb.h+2*m)*ppi);
+    ctx.setLineDash([]);
+  }
+  // design
+  ctx.strokeStyle="#38d39f"; ctx.lineWidth=1.4;
+  for(const line of pl){
+    ctx.beginPath();
+    line.forEach(([x,y],i)=>{const px=mx+x*ppi,py=my+y*ppi; i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+    ctx.stroke();
+  }
+  $("matLabel").textContent=matW+'"';
+  $("pathCount").textContent=pl.length+" paths";
+  updateDims();
+}
+function updateDims(){
+  if(!state.design){ $("dims").textContent="—"; return; }
+  const bb=transformedBBox();
+  $("dims").textContent = `Design: ${bb.w.toFixed(2)}" × ${bb.h.toFixed(2)}"  @  X ${bb.minX.toFixed(2)}", Y ${bb.minY.toFixed(2)}"`;
+}
+
+/* ---------- HPGL ---------- */
+function generateHPGL(){
+  const pl=transformedPolylines();
+  if(!pl.length) return "";
+  const spi=parseFloat($("stepsPerIn").value||"1016");
+  const matW=parseFloat($("matWidth").value||"24");
+  const flipX=$("flipX").checked, flipY=$("flipY").checked;
+  const bb=bboxOf(pl);
+  const spanX=Math.max(bb.minX+bb.w, 1);
+  const map=(x,y)=>{
+    let X = flipX ? (spanX - x) : x;
+    let Y = flipY ? (matW - y) : y;
+    return [Math.round(X*spi), Math.round(Y*spi)];
+  };
+  let s="IN;SP1;";
+  if($("sendVSFS").checked){
+    const vs=Math.max(1,parseInt($("speed").value)); const fs=Math.max(1,parseInt($("force").value));
+    s+=`VS${vs};FS${fs};`;
+  }
+  // weed border first (so it cuts around, easier to weed)
+  if($("weed").checked){
+    const m=0.25;
+    const c=[[bb.minX-m,bb.minY-m],[bb.minX+bb.w+m,bb.minY-m],[bb.minX+bb.w+m,bb.minY+bb.h+m],[bb.minX-m,bb.minY+bb.h+m],[bb.minX-m,bb.minY-m]];
+    const [sx,sy]=map(c[0][0],c[0][1]); s+=`PU${sx},${sy};PD`;
+    s+=c.slice(1).map(([x,y])=>{const[X,Y]=map(x,y);return X+","+Y;}).join(",")+";";
+  }
+  for(const line of pl){
+    if(line.length<2) continue;
+    const [sx,sy]=map(line[0][0],line[0][1]);
+    s+=`PU${sx},${sy};PD`;
+    s+=line.slice(1).map(([x,y])=>{const[X,Y]=map(x,y);return X+","+Y;}).join(",")+";";
+  }
+  s+="PU0,0;SP0;";
+  return s;
+}
+function testCutHPGL(){
+  const spi=parseFloat($("stepsPerIn").value||"1016");
+  const u=v=>Math.round(v*spi);
+  let s="IN;SP1;";
+  if($("sendVSFS").checked){ s+=`VS${parseInt($("speed").value)};FS${parseInt($("force").value)};`; }
+  // 1" square with an inner triangle at origin+0.25"
+  const o=0.25;
+  s+=`PU${u(o)},${u(o)};PD${u(o+1)},${u(o)},${u(o+1)},${u(o+1)},${u(o)},${u(o+1)},${u(o)},${u(o)};`;
+  s+=`PU${u(o+0.25)},${u(o+0.25)};PD${u(o+0.75)},${u(o+0.25)},${u(o+0.5)},${u(o+0.75)},${u(o+0.25)},${u(o+0.25)};`;
+  s+="PU0,0;SP0;";
+  return s;
+}
+
+/* ---------- Export ---------- */
+function download(name,text,type){
+  const b=new Blob([text],{type:type||"text/plain"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+function exportSVG(){
+  const pl=transformedPolylines(); if(!pl.length){alert("Nothing to export.");return;}
+  const bb=bboxOf(pl); const S=96;
+  let paths=pl.map(line=>{
+    return '<polyline fill="none" stroke="black" stroke-width="0.01in" points="'+
+      line.map(([x,y])=>((x-bb.minX)*1).toFixed(4)+","+((y-bb.minY)*1).toFixed(4)).join(" ")+'"/>';
+  }).join("\n");
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${bb.w.toFixed(3)}in" height="${bb.h.toFixed(3)}in" viewBox="0 0 ${bb.w.toFixed(3)} ${bb.h.toFixed(3)}">\n${paths}\n</svg>`;
+  download("jzak-cut.svg", svg, "image/svg+xml");
+}
+
+/* ---------- Wire up ---------- */
+$("connectBtn").onclick=connect;
+$("disconnectBtn").onclick=disconnect;
+$("tabText").onclick=()=>{setTab("text");};
+$("tabSVG").onclick=()=>{setTab("svg");};
+function setTab(t){
+  $("tabText").classList.toggle("active",t==="text");
+  $("tabSVG").classList.toggle("active",t==="svg");
+  $("textCard").style.display = t==="text"?"":"none";
+  $("svgCard").style.display = t==="svg"?"":"none";
+}
+$("buildTextBtn").onclick=buildText;
+$("fontSelect").onchange=()=>{ state.font=null; };
+$("fontFile").onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ state.font=opentype.parse(r.result); $("fontHint").textContent="Custom font loaded: "+f.name; }catch(err){ alert("Couldn't read that font file."); } };
+  r.readAsArrayBuffer(f);
+};
+$("svgFile").onchange=e=>{ const f=e.target.files[0]; if(f) importSVG(f); };
+$("heightIn").oninput=()=>{ autoWidthFromHeight(); draw(); };
+$("posX").oninput=draw; $("posY").oninput=draw;
+$("matWidth").oninput=draw; $("stepsPerIn").oninput=draw;
+$("mirror").onchange=draw; $("weed").onchange=draw; $("flipX").onchange=draw; $("flipY").onchange=draw;
+document.querySelectorAll("[data-rot]").forEach(b=>b.onclick=()=>{ state.rotation=parseInt(b.dataset.rot); autoWidthFromHeight(); draw(); });
+$("speed").oninput=()=>{$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;};
+$("force").oninput=()=>{$("frcOut").textContent=$("force").value;};
+$("sendBtn").onclick=async()=>{ const h=generateHPGL(); if(!h){alert("Build a design first.");return;} await writeToCutter(h); };
+$("testBtn").onclick=async()=>{ if(!state.connected){alert("Connect the cutter to run a test cut.");return;} await writeToCutter(testCutHPGL()); };
+$("pltBtn").onclick=()=>{ const h=generateHPGL(); if(!h){alert("Build a design first.");return;} download("jzak-cut.plt",h); };
+$("hpglBtn").onclick=()=>{ const h=generateHPGL(); if(!h){alert("Build a design first.");return;}
+  const w=window.open("","_blank"); w.document.write("<pre>"+h.replace(/;/g,";\n")+"</pre>"); };
+$("svgOutBtn").onclick=exportSVG;
+
+/* init */
+checkSerial();
+setTab("text");
+buildText().catch(()=>{});
+draw();
+</script>
+</body>
+</html>
