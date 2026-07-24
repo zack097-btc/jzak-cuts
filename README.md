@@ -45,13 +45,23 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What it does (v9)
+## What it does (v10)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **weld / subtract / overlap / exclude** shape algebra · **offset contour cuts** (sticker borders and inline shrinks, round · sharp · clipped corners) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (**JZAK Trace**, our own engine — true Bézier curves, sub-pixel accurate, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **weld / subtract / overlap / exclude** shape algebra · **offset contour cuts** (sticker borders and inline shrinks, round · sharp · clipped corners) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+
+### The tracing engine (JZAK Trace)
+
+The tracer is ours, written from scratch for this app — no third-party tracing code, nothing that could stop the software being sold. It works in five passes: it walks the boundaries *between* pixels so every outline, hole included, comes out as an exact closed loop wound the right way; it then slides each point onto the true edge by reading the **original greyscale**, which is where the accuracy comes from — anti-aliased artwork records where the edge fell *inside* a pixel, and a black-and-white tracer throws that away; it finds real corners at several scales at once so a sharp point stays sharp while the pixel staircase is not mistaken for detail; it puts each corner back exactly where the two straight runs meeting there would cross; and finally it fits true cubic Bézier curves by least squares, splitting only where the curve genuinely misses.
+
+Measured against shapes whose exact geometry is known — circles, rounded rectangles, pentagons, rings, thin strokes, diagonals — it lands **inside a fifth of a pixel** on clean anti-aliased art where a black-and-white tracer is stuck at half a pixel, and it holds corners to **0.20 px** against potrace's 1.04 px. On rendered lettering it sits about **30 % closer to the true outline** than potrace at a comparable node count.
+
+It also knows when the picture cannot tell it any more. A hard-edged, un-anti-aliased image only knows its own edge to about a third of a pixel, so on those the curve is deliberately not chased tighter than that — chasing a staircase only buries the shape in nodes you then have to edit.
+
+**Smooth slider:** 0 follows every last detail, 8 is glass-smooth. **3 is the default and is right for most artwork.** Raise it for scanned or noisy art, lower it for crisp high-resolution logos.
 
 ### For truly exact, commercial-grade cuts
 
-Tracing turns a *picture* into cut lines — it's only ever as sharp as the image you feed it (a Silhouette `.studio3` carries just a 512 px preview inside, so it can't trace razor-sharp). For exact work, feed **real vectors**: in Silhouette Studio use **File → Save As / Export** to **SVG** (Designer Edition) or **DXF** (free edition), then import that here — it comes in as exact, infinitely scalable vector paths, no tracing. For logos you only have as images, use the **highest-resolution** source you can (original art / PDF / large PNG); potrace on clean high-res art is excellent.
+Tracing turns a *picture* into cut lines — it's only ever as sharp as the image you feed it (a Silhouette `.studio3` carries just a 512 px preview inside, so it can't trace razor-sharp). For exact work, feed **real vectors**: in Silhouette Studio use **File → Save As / Export** to **SVG** (Designer Edition) or **DXF** (free edition), then import that here — it comes in as exact, infinitely scalable vector paths, no tracing. For logos you only have as images, use the **highest-resolution** source you can (original art / PDF / large PNG).
 
 ### Point / node editing (the ✎ tool)
 
@@ -131,10 +141,18 @@ History holds the last 80 steps. A run of small changes — dragging a handle, h
 - **Multiple objects & batch runs:** every add drops a new object; click to select, drag to move. Select one, set **Copies**/**Gap**, and **Make grid** to fill the vinyl with a whole batch in one cut.
 - **Registration marks & job library:** tick *Registration marks* for print-and-cut alignment; save/load whole jobs (mat + settings), and export a `.json` to move a job between computers.
 
+## Licensing
+
+Every piece of code in the shipped page is either ours or under a permissive
+licence (MIT, Boost, SIL OFL). There is **no GPL code in the build**, so the app
+can be sold, licensed, rebranded or bundled with a machine without any
+obligation to publish source. See **[LICENSES.md](LICENSES.md)** for the full
+notice — keep that file with the app.
+
 ## Ideas for a future rev (just ask)
 
 Automatic nesting to minimise waste · print-and-cut auto-alignment via an optical sensor · centerline tracing for single-line engraving fonts.
 
 ---
 
-*Built for JZac Designs. The tracing engine (potrace) and font engine (opentype.js) are bundled into the page, so tracing, point-editing, and cutting all work fully offline. Only the optional Google-font downloads need the web; your built-in fonts, uploaded fonts, and `.plt` export work offline.*
+*Built for JZac Designs. The tracing engine (JZAK Trace, ours) and the font engine (opentype.js) are bundled into the page, so tracing, point-editing, and cutting all work fully offline. Only the optional Google-font downloads need the web; your built-in fonts, uploaded fonts, and `.plt` export work offline.*
