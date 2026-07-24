@@ -8,7 +8,24 @@ Because it's a single web page hosted in your own GitHub, you open it at one URL
 
 ## Run it on any computer
 
-**Option A — Host it (recommended, this is the "any computer" part):**
+There are three ways to run it, and they are the same program.
+
+**Option A — Install it on Windows (best on the shop machine).** Download the
+installer from the repository's [Releases](../../releases) page, run it, and JZAK
+Cuts appears in the Start menu like any other program. It installs for the
+current user, so it never asks for administrator rights. The installed version
+owns the COM port itself instead of borrowing the browser's, which means no
+browser, no internet, and no tab that can quietly drop the port halfway through
+a long cut. See **[desktop/README.md](desktop/README.md)** for how that works and
+how to build it yourself.
+
+**Option B — Open it in a browser (works on any machine, no install).** Go to
+**`https://zack097-btc.github.io/jzak-cuts/`** in Chrome or Edge. Cutting uses
+the Web Serial API, which those two browsers have and Safari and Firefox do not.
+Chrome will also offer to install it as an app from the address bar; that copy
+keeps working with the shop wifi down.
+
+**Option C — Set the hosting up from scratch** (already done, kept for reference):
 
 1. Create a new repo in your GitHub (`zack097-btc`) named `jzak-cuts`.
 2. Upload `index.html` to it.
@@ -140,6 +157,36 @@ History holds the last 80 steps. A run of small changes — dragging a handle, h
 - **Saved designs:** select an object and **Save** it to your library (left panel) — traced logos, imported art, lettering — then **Add to mat** any time to reuse it.
 - **Multiple objects & batch runs:** every add drops a new object; click to select, drag to move. Select one, set **Copies**/**Gap**, and **Make grid** to fill the vinyl with a whole batch in one cut.
 - **Registration marks & job library:** tick *Registration marks* for print-and-cut alignment; save/load whole jobs (mat + settings), and export a `.json` to move a job between computers.
+
+## Building from source
+
+`index.html` is generated, not hand-edited. **Always edit `index.src.html`** —
+anything typed into `index.html` is thrown away by the next build.
+
+```
+python build.py
+```
+
+That reads `index.src.html`, the three libraries in `libs/`, and the font payload
+in `fonts.json`, and writes the single self-contained `index.html` the website
+and the installer both serve. Everything it needs is in this repository, so a
+fresh clone rebuilds the identical file — nothing is fetched and nothing lives
+outside the repo.
+
+| file | what it is |
+|---|---|
+| `index.src.html` | the studio — the file you edit |
+| `libs/jzaktrace.js` | our tracing engine (MIT, ours) |
+| `libs/opentype.min.js` | font parsing (MIT) |
+| `libs/clipper.js` | polygon boolean operations, used by weld and contour (Boost) |
+| `fonts.json` | the bundled fonts, base64'd (SIL OFL) |
+| `build.py` | stitches all of the above into `index.html` |
+| `desktop/` | the native Windows shell — see its own README |
+
+The `*.cjs` files at the top level are the test suite; run any of them with
+`node <file>.cjs` against a headless Chromium. They cover tracing accuracy,
+node editing, rotation, alignment, welding, undo/redo, the PWA, the font
+loader, and both halves of the serial layer.
 
 ## Licensing
 

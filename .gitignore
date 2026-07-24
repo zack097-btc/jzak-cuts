@@ -1,0 +1,7 @@
+# Build output, not source. The desktop shell's copy of the studio is staged at
+# build time from the index.html beside this file, so it is never committed.
+desktop/dist/
+desktop/src-tauri/icons/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+node_modules/

@@ -11,7 +11,14 @@
 <meta name="apple-mobile-web-app-title" content="JZAK Cuts">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="icon-192.png">
-<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
+<script>
+/* The service worker is what makes the browser copy work with the shop wifi
+   down. The installed desktop app already carries every byte inside itself,
+   so there is nothing there for a worker to cache and it is only skipped. */
+if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator){
+  window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});
+}
+</script>
 <style>
   :root{
     --win:#d7d7d7; --chrome:#ececec; --chrome2:#e0e0e0; --line:#b4b4b4; --line2:#c9c9c9;
@@ -8750,9 +8757,98 @@ function b64ToBuf(b){const s=atob(b),u=new Uint8Array(s.length);for(let i=0;i<s.
 function bufToB64(buf){const b=new Uint8Array(buf);let s="";for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s);}
 
 /* ---- serial ---- */
-function checkSerial(){const w=$("serialWarn");if(!("serial" in navigator)){w.classList.add("show");w.innerHTML="⚠ This browser can't reach the cutter (Web Serial needed). Use <b>Chrome</b> or <b>Edge</b>. You can still design here and Download .plt.";$("connectBtn").disabled=true;}}
-async function connect(){try{const port=await navigator.serial.requestPort();try{await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"hardware"});}catch(e){await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"none"});}state.port=port;state.writer=port.writable.getWriter();state.connected=true;$("dot").classList.add("on");$("statusText").textContent="Cutter connected · 9600 baud";$("connectBtn").disabled=true;$("sendBtn").disabled=false;}catch(err){if(err&&err.name==="NotFoundError")return;alert("Could not connect: "+(err.message||err));}}
-async function writeToCutter(str){if(!state.writer){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}const b=new TextEncoder().encode(str);for(let i=0;i<b.length;i+=256)await state.writer.write(b.slice(i,i+256));}
+/* Two ways to reach the machine, one interface behind them.
+
+   In a browser it is Web Serial, which is what Chrome and Edge give us. In the
+   installed desktop app it is a real COM port opened by the program itself,
+   because the desktop web view has no Web Serial at all — and a port the
+   program owns outright holds steadier through a long cut than one borrowed
+   from the browser. Everything above this line neither knows nor cares which
+   one is in play. */
+const DESKTOP = !!(window.__TAURI_INTERNALS__ || window.__TAURI__);
+function nativeCall(cmd, args){
+  const t = window.__TAURI__;
+  const inv = (t && t.core && t.core.invoke) || (t && t.invoke) ||
+              (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
+  if(!inv) return Promise.reject(new Error("desktop bridge missing"));
+  return inv(cmd, args || {});
+}
+/* A little chooser, built on the spot, for when more than one port answers. */
+function pickPort(ports){
+  return new Promise(res=>{
+    const bg=document.createElement("div");
+    bg.id="portPick";
+    bg.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center";
+    const bx=document.createElement("div");
+    bx.style.cssText="background:#181b20;color:#e8eaed;border:1px solid #333;border-radius:10px;padding:18px 20px;min-width:320px;font:14px system-ui,sans-serif";
+    bx.innerHTML="<div style='font-weight:600;margin-bottom:10px'>Which port is the cutter on?</div>";
+    ports.forEach(p=>{
+      const b=document.createElement("button");
+      b.textContent=p.name+(p.detail?"  —  "+p.detail:"");
+      b.style.cssText="display:block;width:100%;text-align:left;margin:4px 0;padding:9px 11px;background:#22262c;color:#e8eaed;border:1px solid #3a3f47;border-radius:7px;cursor:pointer";
+      b.onclick=()=>{bg.remove();res(p.name);};
+      bx.appendChild(b);
+    });
+    const c=document.createElement("button");
+    c.textContent="Cancel";
+    c.style.cssText="display:block;width:100%;margin-top:10px;padding:8px;background:none;color:#9aa0a6;border:0;cursor:pointer";
+    c.onclick=()=>{bg.remove();res(null);};
+    bx.appendChild(c); bg.appendChild(bx); document.body.appendChild(bg);
+  });
+}
+const CutterIO = DESKTOP ? {
+  label:"USB serial",
+  supported(){ return true; },
+  async connect(){
+    const ports = await nativeCall("list_ports");
+    if(!ports.length) throw new Error("No serial ports found. Plug the cutter in and switch it on.");
+    /* one obvious candidate: take it. Otherwise let the shop floor say. */
+    const usb = ports.filter(p=>p.usb);
+    const list = usb.length ? usb : ports;
+    const name = list.length===1 ? list[0].name : await pickPort(list);
+    if(!name) return null;
+    await nativeCall("open_port", {name:name, baud:9600});
+    return name;
+  },
+  async write(str){ await nativeCall("write_port", {data:str}); },
+  async disconnect(){ try{ await nativeCall("close_port"); }catch(e){} }
+} : {
+  label:"Web Serial",
+  supported(){ return "serial" in navigator; },
+  async connect(){
+    const port = await navigator.serial.requestPort();
+    try{ await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"hardware"}); }
+    catch(e){ await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"none"}); }
+    state.port = port; state.writer = port.writable.getWriter();
+    return (port.getInfo && port.getInfo().usbProductId!=null) ? "USB serial" : "serial port";
+  },
+  async write(str){
+    const b = new TextEncoder().encode(str);
+    for(let i=0;i<b.length;i+=256) await state.writer.write(b.slice(i,i+256));
+  },
+  async disconnect(){
+    try{ if(state.writer){ state.writer.releaseLock(); } if(state.port) await state.port.close(); }catch(e){}
+    state.writer=null; state.port=null;
+  }
+};
+function checkSerial(){const w=$("serialWarn");if(!CutterIO.supported()){w.classList.add("show");w.innerHTML="⚠ This browser can't reach the cutter (Web Serial needed). Use <b>Chrome</b> or <b>Edge</b>, or install the desktop app. You can still design here and Download .plt.";$("connectBtn").disabled=true;}}
+async function connect(){
+  try{
+    const where = await CutterIO.connect();
+    if(where===null) return;                       /* user backed out */
+    state.connected=true;
+    $("dot").classList.add("on");
+    $("statusText").textContent="Cutter connected · "+where+" · 9600 baud";
+    $("connectBtn").disabled=true; $("sendBtn").disabled=false;
+  }catch(err){
+    if(err&&err.name==="NotFoundError")return;     /* Chrome's picker, dismissed */
+    alert("Could not connect: "+(err.message||err));
+  }
+}
+async function writeToCutter(str){
+  if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}
+  await CutterIO.write(str);
+}
 
 /* ---- geometry ---- */
 function sampleCubic(p0,p1,p2,p3,n){const o=[];for(let i=1;i<=n;i++){const t=i/n,m=1-t;o.push([m*m*m*p0[0]+3*m*m*t*p1[0]+3*m*t*t*p2[0]+t*t*t*p3[0],m*m*m*p0[1]+3*m*m*t*p1[1]+3*m*t*t*p2[1]+t*t*t*p3[1]]);}return o;}
