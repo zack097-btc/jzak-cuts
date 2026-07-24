@@ -1,0 +1,16 @@
+{
+  "name": "JZAK Cuts — Vinyl Cutting Studio",
+  "short_name": "JZAK Cuts",
+  "description": "House-brand vinyl cutting studio for JZac Designs — design, trace, edit and cut to your USCutter.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#8a8f96",
+  "theme_color": "#171b21",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JZAK Cuts — Vinyl Cutting Studio</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#171b21">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="JZAK Cuts">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 <style>
   :root{
     --win:#d7d7d7; --chrome:#ececec; --chrome2:#e0e0e0; --line:#b4b4b4; --line2:#c9c9c9;
@@ -1751,6 +1759,25 @@ function drawNodes(){const o=selected();if(!o||state.tool!=='node')return;ensure
   ctx.restore();}
 cv.addEventListener("dblclick",e=>{if(state.tool!=='node')return;const{x,y}=evtCanvas(e),o=selected();if(!o)return;ensureNodes(o);const hit=nodeHit(o,x,y);if(hit&&hit.part==='anchor'){nodeToggleType(o,hit.si,hit.pi);nodeSel={si:hit.si,pi:hit.pi};draw();}else if(nodeInsert(o,x,y)){objCommitNodes(o);draw();}});
 window.addEventListener("keydown",e=>{if(state.tool!=='node')return;if(/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||''))return;if((e.key==='Delete'||e.key==='Backspace')&&nodeSel){const o=selected();if(o){e.preventDefault();nodeDelete(o,nodeSel.si,nodeSel.pi);draw();}}});
+
+/* ---- keyboard: nudge / copy / paste / duplicate / delete (select mode) ---- */
+let clipObj=null;
+function isTyping(){return /INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||'');}
+window.addEventListener("keydown",e=>{
+  if(state.tool==='node')return;
+  if(isTyping())return;
+  const o=selected(),k=e.key,mod=e.ctrlKey||e.metaKey;
+  if(mod&&(k==='c'||k==='C')){if(o)clipObj=JSON.parse(JSON.stringify(o));e.preventDefault();return;}
+  if(mod&&(k==='v'||k==='V')){if(clipObj){const c=JSON.parse(JSON.stringify(clipObj));c.id=nextId++;c.posX=(c.posX||1)+0.5;c.posY=(c.posY||1)+0.5;c.name=(c.name||'object')+' copy';state.objects.push(c);state.selId=c.id;renderObjList();syncInputs();draw();}e.preventDefault();return;}
+  if(mod&&(k==='d'||k==='D')){if(o)duplicateObj(o.id);e.preventDefault();return;}
+  if(!o)return;
+  if(k==='Delete'||k==='Backspace'){deleteObj(o.id);e.preventDefault();return;}
+  const step=e.shiftKey?0.5:0.05;
+  if(k==='ArrowLeft'){o.posX-=step;syncInputs();draw();e.preventDefault();}
+  else if(k==='ArrowRight'){o.posX+=step;syncInputs();draw();e.preventDefault();}
+  else if(k==='ArrowUp'){o.posY-=step;syncInputs();draw();e.preventDefault();}
+  else if(k==='ArrowDown'){o.posY+=step;syncInputs();draw();e.preventDefault();}
+});
 
 /* ---- overcut + HPGL ---- */
 function withOvercut(line){if(!$("bladeComp").checked)return line;const oc=(parseFloat($("bladeOff").value||"0")/25.4);if(oc<=0||line.length<3)return line;const a=line[0],last=line[line.length-1];if(Math.hypot(last[0]-a[0],last[1]-a[1])>=0.01)return line;const b=line[1],dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1;return line.concat([[a[0]+dx/Ln*oc,a[1]+dy/Ln*oc]]);}
