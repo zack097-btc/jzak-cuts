@@ -183,10 +183,26 @@ outside the repo.
 | `build.py` | stitches all of the above into `index.html` |
 | `desktop/` | the native Windows shell — see its own README |
 
-The `*.cjs` files at the top level are the test suite; run any of them with
-`node <file>.cjs` against a headless Chromium. They cover tracing accuracy,
-node editing, rotation, alignment, welding, undo/redo, the PWA, the font
-loader, and both halves of the serial layer.
+The `*.cjs` files at the top level are the test suite. They drive the built
+`index.html` in a headless Chromium, so install Playwright once and then run
+any of them straight from the repository root:
+
+```
+npm install playwright
+npx playwright install chromium
+node testtrace.cjs
+```
+
+They cover tracing accuracy, node editing, rotation, alignment, welding,
+undo/redo, the PWA, the font loader, and both halves of the serial layer. Each
+one prints `PASS`/`FAIL` lines and finishes with a summary. The Rust half of
+the serial layer has its own tests — `cargo test` from `desktop/src-tauri`.
+
+Run the whole suite before shipping a build:
+
+```
+for f in test*.cjs; do node "$f"; done
+```
 
 ## Licensing
 
