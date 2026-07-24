@@ -45,9 +45,9 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What it does (v6)
+## What it does (v7)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
 
 ### For truly exact, commercial-grade cuts
 
@@ -56,6 +56,14 @@ Tracing turns a *picture* into cut lines — it's only ever as sharp as the imag
 ### Point / node editing (the ✎ tool)
 
 Select a traced or imported object, pick the **✎ Edit points** tool, and you get real vector node editing: **green squares** are corner points, **blue circles** are smooth/curve points. Drag a point to move it; drag its **handles** to reshape the curve (smooth points keep their handles aligned like Silhouette); **double-click a point** to switch it between corner and smooth; **double-click a line** to add a point; press **Delete** to remove the selected point. Every edit updates the cut path live.
+
+### Rotating & resizing on the mat
+
+Select an object and you get the same eight-handle box the pro apps use, and it tilts with the object instead of staying stuck square to the mat.
+
+The four **solid blue corners** scale the whole object. The four **white side handles** stretch one dimension only — grab the right handle to make lettering wider without making it taller, grab the bottom to make it taller without making it wider. Whichever handle you drag, the opposite corner or edge stays exactly where it was, so the piece grows away from where you're pulling rather than drifting across the vinyl. **Lock aspect ratio** governs the corners; holding `Shift` while you drag temporarily inverts it, so you can force a proportional drag with the lock off or a free drag with it on.
+
+The **⟳ knob** on the stalk above the box rotates to any angle. Hold `Shift` while turning to snap to 15° steps. A blue badge shows the live angle as you turn. For an exact figure, type it into the **Angle (any °)** box in the right panel — the `0° / 90° / 180° / 270°` buttons and the box stay in sync with each other, and **Reset to 0°** squares the piece back up. All of it rotates around the object's own centre, and one `Ctrl+Z` undoes a whole drag rather than unwinding it a degree at a time.
 
 ### Undo / redo & keyboard shortcuts
 

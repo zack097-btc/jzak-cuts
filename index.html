@@ -209,6 +209,8 @@
       <div class="row"><div><label>Pos X (in)</label><input type="number" id="posX" value="1" step="0.1"></div><div><label>Pos Y (in)</label><input type="number" id="posY" value="1" step="0.1"></div></div>
       <label>Rotate</label>
       <div class="seg" id="rotSeg"><button data-rot="0" class="on">0°</button><button data-rot="90">90°</button><button data-rot="180">180°</button><button data-rot="270">270°</button></div>
+      <div class="row" style="margin-top:6px"><div><label>Angle (any °)</label><input type="number" id="rotDeg" value="0" step="1" min="-360" max="720"></div><div><label>&nbsp;</label><button class="mini" id="rotReset" type="button" style="width:100%">Reset to 0°</button></div></div>
+      <div style="font-size:11px;color:#888;margin:-2px 0 4px">Or drag the ⟳ handle above the selection · hold Shift to snap 15°</div>
       <div class="chk"><input type="checkbox" id="mirror"><label for="mirror" style="margin:0">Mirror (HTV)</label></div>
     </div>
 
@@ -1623,7 +1625,8 @@ function allLines(){const out=[];for(const o of state.objects)for(const l of obj
 function unionBBox(){const pl=allLines();return pl.length?bboxOf(pl):{minX:0,minY:0,w:0,h:0};}
 function renderObjList(){const el=$("objList");if(!state.objects.length){el.innerHTML='<div class="empty">Nothing yet — Import or Add Text.</div>';return;}el.innerHTML="";state.objects.forEach(o=>{const row=document.createElement("div");row.className="objrow"+(o.id===state.selId?" sel":"");const nm=document.createElement("span");nm.className="nm";nm.textContent=o.name;nm.onclick=()=>selectObj(o.id);const b=document.createElement("button");b.textContent="Select";b.onclick=()=>selectObj(o.id);row.appendChild(nm);row.appendChild(b);el.appendChild(row);});}
 function syncInputs(){const o=selected();if(!o){$("widthIn").value="0";$("heightIn").value="0";setRot(0);$("mirror").checked=false;updateDims();return;}if(o.width==null)o.width=objWidth(o);$("heightIn").value=o.height.toFixed(2);$("widthIn").value=objWidth(o).toFixed(2);$("posX").value=o.posX.toFixed(2);$("posY").value=o.posY.toFixed(2);setRot(o.rotation);$("mirror").checked=o.mirror;updateDims();}
-function setRot(r){document.querySelectorAll("#rotSeg button").forEach(b=>b.classList.toggle("on",parseInt(b.dataset.rot)===r));}
+function normDeg(d){d=d%360;if(d<0)d+=360;return d;}
+function setRot(r){r=normDeg(r||0);document.querySelectorAll("#rotSeg button").forEach(b=>b.classList.toggle("on",Math.abs(parseInt(b.dataset.rot)-r)<0.001));const f=$("rotDeg");if(f&&document.activeElement!==f)f.value=(Math.round(r*10)/10);}
 
 /* ---- fonts ---- */
 const EMBEDDED=window.EMBEDDED_FONTS||{};
@@ -1677,7 +1680,31 @@ function draw(){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+M
   ctx.strokeStyle="rgba(0,0,0,.06)";for(let i=0;i<=viewLen;i++){const gx=ox+i*ppi;ctx.beginPath();ctx.moveTo(gx,oy);ctx.lineTo(gx,oy+mh);ctx.stroke();}for(let j=0;j<=matW;j++){const gy=oy+j*ppi;ctx.beginPath();ctx.moveTo(ox,gy);ctx.lineTo(ox+mw,gy);ctx.stroke();}
   if($("weed").checked&&state.objects.length){const m=0.25;ctx.strokeStyle="rgba(30,111,224,.55)";ctx.setLineDash([5,4]);ctx.strokeRect(ox+(bb.minX-m)*ppi,oy+(bb.minY-m)*ppi,(bb.w+2*m)*ppi,(bb.h+2*m)*ppi);ctx.setLineDash([]);}
   if($("regMarks").checked&&state.objects.length){ctx.strokeStyle="#d98a00";ctx.lineWidth=1.6;for(const seg of regMarkLines(bb)){ctx.beginPath();seg.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}}
-  for(const o of state.objects){const sel=o.id===state.selId;ctx.strokeStyle=o.color||"#111";ctx.lineWidth=sel?1.7:1.2;for(const line of objPolylines(o)){ctx.beginPath();line.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}if(sel){const ob=bboxOf(objPolylines(o));ctx.strokeStyle="#1e6fe0";ctx.setLineDash([4,3]);ctx.strokeRect(ox+ob.minX*ppi,oy+ob.minY*ppi,ob.w*ppi,ob.h*ppi);ctx.setLineDash([]);ctx.fillStyle="#1e6fe0";[[ob.minX,ob.minY],[ob.minX+ob.w,ob.minY],[ob.minX,ob.minY+ob.h],[ob.minX+ob.w,ob.minY+ob.h]].forEach(([hx,hy])=>{const[px,py]=P(hx,hy);ctx.fillRect(px-3,py-3,6,6);});}}
+  for(const o of state.objects){const sel=o.id===state.selId;ctx.strokeStyle=o.color||"#111";ctx.lineWidth=sel?1.7:1.2;for(const line of objPolylines(o)){ctx.beginPath();line.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}if(sel){
+    const b=objBox(o),C=b.corners,E=b.edges,rh=objRotHandle(o,ppi);
+    ctx.strokeStyle="#1e6fe0";ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();[C[0],C[1],C[3],C[2]].forEach((pt,i)=>{const[px,py]=P(pt[0],pt[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.closePath();ctx.stroke();
+    ctx.setLineDash([]);
+    /* stalk + knob for the rotate handle */
+    const[ex,ey]=P(E[0][0],E[0][1]),[rx,ry]=P(rh[0],rh[1]);
+    ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(rx,ry);ctx.stroke();
+    ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(rx,ry,6,0,7);ctx.fill();ctx.stroke();
+    ctx.fillStyle="#1e6fe0";ctx.font="bold 10px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("\u27F3",rx,ry+0.5);ctx.textAlign="start";ctx.textBaseline="alphabetic";
+    /* side handles (stretch one dimension) then corner handles (scale) */
+    ctx.fillStyle="#fff";ctx.strokeStyle="#1e6fe0";
+    E.forEach(pt=>{const[px,py]=P(pt[0],pt[1]);ctx.beginPath();ctx.rect(px-3.5,py-3.5,7,7);ctx.fill();ctx.stroke();});
+    ctx.fillStyle="#1e6fe0";
+    C.forEach(pt=>{const[px,py]=P(pt[0],pt[1]);ctx.fillRect(px-4,py-4,8,8);});
+    if(Math.abs(normDeg(o.rotation||0))>0.05){
+      const txt=(Math.round(normDeg(o.rotation)*10)/10)+"\u00B0";
+      ctx.font="bold 11px system-ui";const tw=ctx.measureText(txt).width,bw=tw+10,bh=16,bx=rx-bw/2,by=ry-bh-9;
+      ctx.fillStyle="#1e6fe0";ctx.beginPath();
+      if(ctx.roundRect)ctx.roundRect(bx,by,bw,bh,4);else ctx.rect(bx,by,bw,bh);
+      ctx.fill();
+      ctx.fillStyle="#fff";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(txt,rx,by+bh/2+0.5);ctx.textAlign="start";ctx.textBaseline="alphabetic";
+    }
+  }}
   ctx.restore();
   drawNodes();
   drawRulers(ox,oy,ppi,viewLen,matW,L);
@@ -1695,21 +1722,85 @@ function screenToWorld(cx,cy){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+vie
 function evtCanvas(e){const r=cv.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
 cv.addEventListener("wheel",e=>{e.preventDefault();const {x,y}=evtCanvas(e),L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom);view.zoom=Math.min(24,Math.max(0.15,view.zoom*(e.deltaY<0?1.15:1/1.15)));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();},{passive:false});
 function objAt(wx,wy){for(let i=state.objects.length-1;i>=0;i--){const o=state.objects[i],b=bboxOf(objPolylines(o));if(wx>=b.minX-.1&&wx<=b.minX+b.w+.1&&wy>=b.minY-.1&&wy<=b.minY+b.h+.1)return o;}return null;}
-function objCorners(o){const ob=bboxOf(objPolylines(o));return {ob,pts:[[ob.minX,ob.minY],[ob.minX+ob.w,ob.minY],[ob.minX,ob.minY+ob.h],[ob.minX+ob.w,ob.minY+ob.h]]};}
-function cornerHit(o,x,y){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany,pts=objCorners(o).pts;for(let ci=0;ci<4;ci++){if(Math.abs(x-(ox+pts[ci][0]*ppi))<9&&Math.abs(y-(oy+pts[ci][1]*ppi))<9)return {ci,pts};}return null;}
+/* --- oriented (rotation-aware) selection box: corners, side handles, rotate handle --- */
+/* Local box space is [0,W]x[0,H] BEFORE rotation; T() maps it to world inches. */
+function objBox(o){
+  const W=Math.max(1e-6,objW(o)),H=Math.max(1e-6,o.height),rot=(o.rotation||0)*Math.PI/180,
+        cx=W/2,cy=H/2,cos=Math.cos(rot),sin=Math.sin(rot);
+  const T=(nx,ny)=>{const dx=nx-cx,dy=ny-cy;return [dx*cos-dy*sin+cx+o.posX,dx*sin+dy*cos+cy+o.posY];};
+  return {W,H,T,u:[cos,sin],v:[-sin,cos],center:[o.posX+cx,o.posY+cy],
+    corners:[T(0,0),T(W,0),T(0,H),T(W,H)],            /* TL TR BL BR */
+    edges:[T(W/2,0),T(W/2,H),T(0,H/2),T(W,H/2)]};     /* N  S  W  E  */
+}
+/* fixed point for each handle, as a fraction of the box */
+const HANCHOR={c0:[1,1],c1:[0,1],c2:[1,0],c3:[0,0],e0:[0,1],e1:[0,0],e2:[1,0],e3:[0,0]};
+function objRotHandle(o,ppi){const b=objBox(o),d=26/Math.max(1e-6,ppi);return [b.edges[0][0]-b.v[0]*d,b.edges[0][1]-b.v[1]*d];}
+function objCorners(o){const b=objBox(o);return {ob:bboxOf(objPolylines(o)),pts:b.corners};}
+/* returns {key:'c0'..'c3'|'e0'..'e3'|'rot'} for the handle under the cursor, else null */
+function handleHit(o,x,y){
+  const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany,b=objBox(o);
+  const near=(pt,r)=>Math.abs(x-(ox+pt[0]*ppi))<r&&Math.abs(y-(oy+pt[1]*ppi))<r;
+  if(near(objRotHandle(o,ppi),10))return {key:"rot"};
+  for(let i=0;i<4;i++)if(near(b.corners[i],9))return {key:"c"+i};
+  for(let i=0;i<4;i++)if(near(b.edges[i],8))return {key:"e"+i};
+  return null;
+}
+function cornerHit(o,x,y){const h=handleHit(o,x,y);return (h&&h.key[0]==="c")?{ci:parseInt(h.key[1]),pts:objBox(o).corners}:null;}
+/* cursor that matches the handle's direction once the object is rotated */
+function handleCursor(key,o){
+  if(key==="rot")return "grab";
+  const base={c0:135,c1:45,c2:45,c3:135,e0:90,e1:90,e2:0,e3:0}[key];
+  const a=normDeg(base+(o.rotation||0)),q=Math.round(a/45)%4;
+  return ["ew-resize","nwse-resize","ns-resize","nesw-resize"][q];
+}
 let drag=null;
 cv.addEventListener("mousedown",e=>{const {x,y}=evtCanvas(e);if(state.tool==="node"){nodeMouseDown(x,y,e);return;}if(state.tool==="zoom"){const L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom),f=e.shiftKey?1/1.4:1.4;view.zoom=Math.min(24,Math.max(0.15,view.zoom*f));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();return;}
   const selO=selected();
-  if(selO&&state.tool!=="pan"){const ch=cornerHit(selO,x,y);if(ch){histPush();const anchor=ch.pts[3-ch.ci];drag={mode:"scale",id:selO.id,ci:ch.ci,anchor,d0:Math.hypot(ch.pts[ch.ci][0]-anchor[0],ch.pts[ch.ci][1]-anchor[1])||1e-6,h0:selO.height,w0:objWidth(selO)};return;}}
+  if(selO&&state.tool!=="pan"){
+    const hh=handleHit(selO,x,y);
+    if(hh){
+      histPush();
+      const b=objBox(selO),w0=screenToWorld(x,y);
+      if(hh.key==="rot"){
+        drag={mode:"rot",id:selO.id,cx:b.center[0],cy:b.center[1],a0:Math.atan2(w0.wy-b.center[1],w0.wx-b.center[0]),rot0:selO.rotation||0};
+      }else{
+        const a=HANCHOR[hh.key],aw=b.T(a[0]*b.W,a[1]*b.H);
+        drag={mode:"scale",id:selO.id,key:hh.key,aw,u:b.u,v:b.v,W0:b.W,H0:b.H,both:hh.key[0]==="c"};
+      }
+      return;
+    }
+  }
   const {wx,wy}=screenToWorld(x,y),hit=(state.tool==="pan")?null:objAt(wx,wy);
   if(hit){selectObj(hit.id);histPush();drag={mode:"move",id:hit.id,sx:e.clientX,sy:e.clientY,ox:hit.posX,oy:hit.posY};}else drag={mode:"pan",sx:e.clientX,sy:e.clientY,px:view.panx,py:view.pany};});
 window.addEventListener("mousemove",e=>{const {x,y}=evtCanvas(e),{wx,wy}=screenToWorld(x,y);if(x>=RL&&y>=RT)$("coord").textContent=`X: ${wx.toFixed(2)}"  Y: ${wy.toFixed(2)}"`;
   if(state.tool==="node"){nodeMouseMove(wx,wy);return;}
-  if(!drag){const so=selected();if(so&&state.tool==="select"){const ch=cornerHit(so,x,y);cv.style.cursor=ch?((ch.ci===0||ch.ci===3)?"nwse-resize":"nesw-resize"):"default";}return;}
+  if(!drag){const so=selected();if(so&&state.tool==="select"){const hh=handleHit(so,x,y);cv.style.cursor=hh?handleCursor(hh.key,so):"default";}return;}
   if(drag.mode==="pan"){view.panx=drag.px+(e.clientX-drag.sx);view.pany=drag.py+(e.clientY-drag.sy);draw();}
-  else if(drag.mode==="scale"){const o=state.objects.find(z=>z.id===drag.id);if(!o)return;const dCur=Math.hypot(wx-drag.anchor[0],wy-drag.anchor[1]);let f=dCur/drag.d0;if(!isFinite(f)||f<=0)f=0.01;o.height=Math.max(0.1,drag.h0*f);o.width=Math.max(0.1,drag.w0*f);const cp=objCorners(o).pts[3-drag.ci];o.posX+=drag.anchor[0]-cp[0];o.posY+=drag.anchor[1]-cp[1];syncInputs();draw();}
+  else if(drag.mode==="rot"){const o=state.objects.find(z=>z.id===drag.id);if(!o)return;
+    let deg=drag.rot0+(Math.atan2(wy-drag.cy,wx-drag.cx)-drag.a0)*180/Math.PI;
+    if(e.shiftKey)deg=Math.round(deg/15)*15;
+    o.rotation=normDeg(deg);syncInputs();draw();}
+  else if(drag.mode==="scale"){const o=state.objects.find(z=>z.id===drag.id);if(!o)return;
+    const dx=wx-drag.aw[0],dy=wy-drag.aw[1];
+    let nw=Math.abs(dx*drag.u[0]+dy*drag.u[1]),nh=Math.abs(dx*drag.v[0]+dy*drag.v[1]);
+    /* Shift inverts whatever "Lock aspect ratio" is set to, like the pro apps */
+    const prop=($("lockAspect").checked!==!!e.shiftKey);
+    if(drag.both){
+      if(prop){const f=Math.max(0.005,(nw*drag.W0+nh*drag.H0)/(drag.W0*drag.W0+drag.H0*drag.H0));nw=drag.W0*f;nh=drag.H0*f;}
+    }else if(drag.key==="e0"||drag.key==="e1"){        /* top/bottom: height only */
+      nw=prop?drag.W0*(nh/drag.H0):drag.W0;
+    }else{                                              /* left/right: width only */
+      nh=prop?drag.H0*(nw/drag.W0):drag.H0;
+    }
+    o.width=Math.max(0.05,nw);o.height=Math.max(0.05,nh);
+    /* keep the anchor handle pinned in place while the box grows */
+    const a=HANCHOR[drag.key],W=o.width,H=o.height,rot=(o.rotation||0)*Math.PI/180,
+          cos=Math.cos(rot),sin=Math.sin(rot),cx=W/2,cy=H/2,ddx=a[0]*W-cx,ddy=a[1]*H-cy;
+    o.posX=drag.aw[0]-(ddx*cos-ddy*sin+cx);
+    o.posY=drag.aw[1]-(ddx*sin+ddy*cos+cy);
+    syncInputs();draw();}
   else{const L=layout(),ppi=L.base*view.zoom,o=state.objects.find(z=>z.id===drag.id);if(!o)return;o.posX=drag.ox+(e.clientX-drag.sx)/ppi;o.posY=drag.oy+(e.clientY-drag.sy)/ppi;$("posX").value=o.posX.toFixed(2);$("posY").value=o.posY.toFixed(2);draw();}});
-window.addEventListener("mouseup",()=>{if(nodeDrag){const o=state.objects.find(z=>z.id===nodeDrag.id);if(o){objCommitNodes(o);syncInputs();draw();}nodeDrag=null;histDropIfSame();}if(drag&&(drag.mode==="move"||drag.mode==="scale")){drag=null;histDropIfSame();}drag=null;});
+window.addEventListener("mouseup",()=>{if(nodeDrag){const o=state.objects.find(z=>z.id===nodeDrag.id);if(o){objCommitNodes(o);syncInputs();draw();}nodeDrag=null;histDropIfSame();}if(drag&&(drag.mode==="move"||drag.mode==="scale"||drag.mode==="rot")){drag=null;histDropIfSame();}drag=null;});
 
 /* ============================ Node / Point Editor (Silhouette-style) ============================ */
 const NSEG=24;let nodeSel=null,nodeDrag=null;
@@ -1886,6 +1977,8 @@ $("widthIn").oninput=()=>{histPush("size");editSel(o=>{if(o.width==null)o.width=
 $("posX").oninput=()=>{histPush("pos");editSel(o=>{o.posX=parseFloat($("posX").value||"0");});};$("posY").oninput=()=>{histPush("pos");editSel(o=>{o.posY=parseFloat($("posY").value||"0");});};
 $("mirror").onchange=()=>{histPush();editSel(o=>{o.mirror=$("mirror").checked;});};
 document.querySelectorAll("#rotSeg button").forEach(b=>b.onclick=()=>{histPush();editSel(o=>{o.rotation=parseInt(b.dataset.rot);setRot(o.rotation);$("widthIn").value=objWidth(o).toFixed(2);});});
+$("rotDeg").oninput=()=>{histPush("rot");editSel(o=>{const v=parseFloat($("rotDeg").value);if(!isFinite(v))return;o.rotation=normDeg(v);document.querySelectorAll("#rotSeg button").forEach(b=>b.classList.toggle("on",Math.abs(parseInt(b.dataset.rot)-o.rotation)<0.001));});};
+$("rotReset").onclick=()=>{histPush();editSel(o=>{o.rotation=0;setRot(0);});};
 $("matWidth").oninput=draw;$("stepsPerIn").oninput=draw;$("weed").onchange=draw;$("flipX").onchange=draw;$("flipY").onchange=draw;$("regMarks").onchange=draw;$("bladeOff").oninput=draw;$("bladeComp").onchange=draw;
 $("preset").onchange=e=>applyPreset(e.target.value);
 $("speed").oninput=()=>{$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;};$("force").oninput=()=>{$("frcOut").textContent=$("force").value;};
