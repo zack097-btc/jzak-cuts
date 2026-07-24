@@ -45,9 +45,9 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What it does (v5)
+## What it does (v6)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
 
 ### For truly exact, commercial-grade cuts
 
@@ -56,6 +56,21 @@ Tracing turns a *picture* into cut lines — it's only ever as sharp as the imag
 ### Point / node editing (the ✎ tool)
 
 Select a traced or imported object, pick the **✎ Edit points** tool, and you get real vector node editing: **green squares** are corner points, **blue circles** are smooth/curve points. Drag a point to move it; drag its **handles** to reshape the curve (smooth points keep their handles aligned like Silhouette); **double-click a point** to switch it between corner and smooth; **double-click a line** to add a point; press **Delete** to remove the selected point. Every edit updates the cut path live.
+
+### Undo / redo & keyboard shortcuts
+
+Every edit is undoable — moving, scaling, rotating, mirroring, colour changes, add/delete/duplicate, grid copies, re-traces, job loads, and point edits. Use the **↶ / ↷** buttons at the bottom of the toolbox or the keyboard.
+
+| Shortcut | Does |
+|---|---|
+| `Ctrl+Z` | Undo (works in every tool, including the point editor) |
+| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
+| `Ctrl+C` / `Ctrl+V` | Copy / paste an object |
+| `Ctrl+D` | Duplicate |
+| `Delete` | Delete the selected object (or the selected point, in ✎ mode) |
+| Arrow keys | Nudge 0.05″ · hold `Shift` for 0.5″ |
+
+History holds the last 80 steps. A run of small changes — dragging a handle, holding an arrow key, typing in the width box — collapses into a single undo step, so one `Ctrl+Z` puts you back where you started rather than unwinding one pixel at a time.
 
 ### Using the v4 features
 
