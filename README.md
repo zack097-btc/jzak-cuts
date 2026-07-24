@@ -45,9 +45,9 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What it does (v7)
+## What it does (v8)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
 
 ### For truly exact, commercial-grade cuts
 
@@ -65,6 +65,26 @@ The four **solid blue corners** scale the whole object. The four **white side ha
 
 The **⟳ knob** on the stalk above the box rotates to any angle. Hold `Shift` while turning to snap to 15° steps. A blue badge shows the live angle as you turn. For an exact figure, type it into the **Angle (any °)** box in the right panel — the `0° / 90° / 180° / 270°` buttons and the box stay in sync with each other, and **Reset to 0°** squares the piece back up. All of it rotates around the object's own centre, and one `Ctrl+Z` undoes a whole drag rather than unwinding it a degree at a time.
 
+### Selecting several pieces at once
+
+Click a piece to select it. Hold `Shift` (or `Ctrl`) and click to add another, or click a selected one again to drop it. To grab a whole area, start a drag on empty vinyl and pull a **marquee** across the mat — everything it touches comes along, and holding `Shift` adds that catch to what you already had. `Ctrl+A` takes the whole mat. Clicking bare vinyl clears the selection, and none of the selecting costs an undo step.
+
+Once more than one piece is selected the mat draws a dashed box around the whole group. That box works like the single-object one: drag inside it to **move** everything together, drag a **corner** to scale the group proportionally (the opposite corner stays pinned, so the spacing between pieces scales with them), or swing the **⟳ knob** on the stalk to rotate the whole arrangement — each piece orbits the group centre *and* turns on its own axis, exactly like rotating a group in Illustrator. Hold `Shift` while turning for 15° steps. Every one of those gestures is a single undo, and the selection survives the undo so you can adjust and try again.
+
+Group scaling is deliberately proportional-only. Once the individual pieces are sitting at different angles there is no honest way to stretch a group along one axis without shearing the artwork, so the side handles stay off for groups — stretch each piece on its own instead.
+
+### Aligning, spacing & stacking
+
+The **Layout** panel (and the Layout menu) has three rows of buttons that do the tidying-up work by hand-eye is slow at.
+
+**Align** — left, centre, right, top, middle, bottom. With **several pieces selected they align to each other**; with **exactly one piece selected it aligns to the mat**, which is the fastest way to centre a single decal on the vinyl. Alignment measures the box you actually see on the mat, so a piece sitting at 30° lines up by its real outer edge, not by the un-turned rectangle it started as. Nothing changes size.
+
+**Distribute** — horizontal or vertical, needs at least three pieces. It equalises the **gaps between edges**, not the spacing between centres, so a big piece and a small piece end up with the same clearance between them rather than the same stride. The outermost two pieces never move, so the run keeps the width you set it up with. That is what you want when nesting a batch on a roll — even gaps means even weeding and no surprise overlap.
+
+**Arrange** — bring to front, forward, backward, send to back. Stacking order is also **cut order**: the piece at the back cuts first. On layered multi-colour work that lets you set which layer the blade takes first without re-adding anything.
+
+An align, distribute or arrange that would change nothing costs no undo step, so tapping the buttons to check is free.
+
 ### Undo / redo & keyboard shortcuts
 
 Every edit is undoable — moving, scaling, rotating, mirroring, colour changes, add/delete/duplicate, grid copies, re-traces, job loads, and point edits. Use the **↶ / ↷** buttons at the bottom of the toolbox or the keyboard.
@@ -73,10 +93,13 @@ Every edit is undoable — moving, scaling, rotating, mirroring, colour changes,
 |---|---|
 | `Ctrl+Z` | Undo (works in every tool, including the point editor) |
 | `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
-| `Ctrl+C` / `Ctrl+V` | Copy / paste an object |
-| `Ctrl+D` | Duplicate |
-| `Delete` | Delete the selected object (or the selected point, in ✎ mode) |
-| Arrow keys | Nudge 0.05″ · hold `Shift` for 0.5″ |
+| `Ctrl+C` / `Ctrl+V` | Copy / paste — the whole selection, not just one piece |
+| `Ctrl+D` | Duplicate the selection |
+| `Ctrl+A` | Select everything on the mat |
+| `Delete` | Delete the selection (or the selected point, in ✎ mode) |
+| Arrow keys | Nudge the selection 0.05″ · hold `Shift` for 0.5″ |
+| `Ctrl+]` / `Ctrl+[` | Bring forward / send backward one step |
+| `Ctrl+Shift+]` / `Ctrl+Shift+[` | Bring to front / send to back |
 
 History holds the last 80 steps. A run of small changes — dragging a handle, holding an arrow key, typing in the width box — collapses into a single undo step, so one `Ctrl+Z` puts you back where you started rather than unwinding one pixel at a time.
 

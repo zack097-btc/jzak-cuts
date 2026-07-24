@@ -48,6 +48,12 @@
   .toolbox{width:46px;background:var(--chrome);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0}
   .tool{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:16px;color:#33404f}
   .toolsep{width:24px;height:1px;background:#c3cad3;margin:4px auto}
+  .agrid{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:2px 0 6px}
+  .agrid button{padding:6px 0;font-size:15px;line-height:1;border:1px solid var(--line);background:#fff;border-radius:5px;cursor:pointer;color:#2b3440}
+  .agrid button:hover:not(:disabled){background:#e8f0fe;border-color:#8fb6f0}
+  .agrid button:disabled{opacity:.35;cursor:default}
+  .agrid.four{grid-template-columns:repeat(4,1fr)}
+  .selcount{font-size:11px;color:#888;margin:-2px 0 5px}
   .tool.act{font-size:19px;line-height:1}
   .tool.dis{opacity:.3;cursor:default}
   .tool:hover{background:#e2e2e2}
@@ -102,13 +108,17 @@
     <hr><a data-act="exportsvg">Export SVG</a><a data-act="plt">Download .plt (cut file)</a>
   </div></div>
   <div class="menu"><span>Edit</span><div class="submenu">
-    <a data-act="dup">Duplicate</a><a data-act="del">Delete</a>
+    <a data-act="dup">Duplicate</a><a data-act="del">Delete</a><hr><a data-act="selall">Select All</a>
   </div></div>
   <div class="menu"><span>View</span><div class="submenu">
     <a data-act="zin">Zoom In</a><a data-act="zout">Zoom Out</a><a data-act="fit">Fit to Window</a>
   </div></div>
   <div class="menu"><span>Layout</span><div class="submenu">
-    <a data-act="grid">Make Grid (batch)</a><a data-act="weed">Toggle Weed Border</a><a data-act="reg">Toggle Registration Marks</a>
+    <a data-act="alignleft">Align Left</a><a data-act="alignhc">Align Centres ↔</a><a data-act="alignright">Align Right</a>
+    <a data-act="aligntop">Align Top</a><a data-act="alignvc">Align Centres ↕</a><a data-act="alignbottom">Align Bottom</a>
+    <hr><a data-act="disth">Space Across Evenly</a><a data-act="distv">Space Down Evenly</a>
+    <hr><a data-act="arrfront">Bring to Front</a><a data-act="arrforward">Bring Forward</a><a data-act="arrbackward">Send Backward</a><a data-act="arrback">Send to Back</a>
+    <hr><a data-act="grid">Make Grid (batch)</a><a data-act="weed">Toggle Weed Border</a><a data-act="reg">Toggle Registration Marks</a>
   </div></div>
   <div class="menu"><span>Cut</span><div class="submenu">
     <a data-act="connect">Connect Cutter</a><a data-act="send">Send to Cutter</a><a data-act="test">Test Cut</a>
@@ -200,6 +210,33 @@
         <div><label>Gap (in)</label><input type="number" id="copyGap" value="0.5" min="0" step="0.1"></div>
         <div style="flex:0 0 auto"><button id="gridBtn">Grid</button></div>
       </div>
+    </div>
+
+    <div class="grp">
+      <h3>Arrange &amp; Align</h3>
+      <div class="selcount" id="selCount">Nothing selected</div>
+      <label>Align <span style="color:#888;font-weight:400">(to each other · to the mat when one is selected)</span></label>
+      <div class="agrid" id="alignGrid">
+        <button data-align="left"   title="Align left edges">⇤</button>
+        <button data-align="hcenter" title="Align horizontal centres">⇹</button>
+        <button data-align="right"  title="Align right edges">⇥</button>
+        <button data-align="top"    title="Align top edges">⤒</button>
+        <button data-align="vcenter" title="Align vertical centres">⇳</button>
+        <button data-align="bottom" title="Align bottom edges">⤓</button>
+      </div>
+      <label>Distribute <span style="color:#888;font-weight:400">(even gaps · needs 3+)</span></label>
+      <div class="agrid four" id="distGrid">
+        <button data-dist="h" title="Even horizontal gaps" style="grid-column:span 2">⇔ Space across</button>
+        <button data-dist="v" title="Even vertical gaps" style="grid-column:span 2">⇕ Space down</button>
+      </div>
+      <label>Order <span style="color:#888;font-weight:400">(which piece sits on top)</span></label>
+      <div class="agrid four" id="arrGrid">
+        <button data-arr="front"    title="Bring to front (Ctrl+Shift+])">⤒</button>
+        <button data-arr="forward"  title="Bring forward (Ctrl+])">↑</button>
+        <button data-arr="backward" title="Send backward (Ctrl+[)">↓</button>
+        <button data-arr="back"     title="Send to back (Ctrl+Shift+[)">⤓</button>
+      </div>
+      <div style="font-size:11px;color:#888">Shift-click or drag a box on the mat to select several · Ctrl+A selects all</div>
     </div>
 
     <div class="grp">
@@ -1591,7 +1628,7 @@ var Potrace = (function() {
 /* ============================ JZAK Cuts v5 (VinylMaster-style) ============================ */
 const FONT_BASE="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/";
 const $=id=>document.getElementById(id);
-const state={objects:[],selId:null,port:null,writer:null,connected:false,tool:"select"};
+const state={objects:[],selId:null,selIds:[],port:null,writer:null,connected:false,tool:"select"};
 const view={zoom:1,panx:0,pany:0};
 let nextId=1;
 const VINYL=["#111111","#ffffff","#c0392b","#e74c3c","#e67e22","#f1c40f","#2ecc71","#27ae60","#1e6fe0","#2c3e90","#8e44ad","#16a085","#7f8c8d","#c0c0c0","#795548","#ff8fb0"];
@@ -1612,19 +1649,91 @@ function sampleQuad(p0,p1,p2,n){const o=[];for(let i=1;i<=n;i++){const t=i/n,m=1
 function bboxOf(subs){let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const sp of subs)for(const [x,y] of sp){if(x<a)a=x;if(y<b)b=y;if(x>c)c=x;if(y>d)d=y;}return {minX:a,minY:b,w:c-a,h:d-b};}
 
 /* ---- objects ---- */
-function addObject(subpaths,name,height){histPush();const bb=bboxOf(subpaths);let h=height;if(!h||h>40||h<0.2)h=(bb.h>0.2&&bb.h<40?bb.h:4);const o={id:nextId++,subpaths,bbox:bb,name:name||("object "+(state.objects.length+1)),posX:1,posY:1,height:h,width:bb.w*(h/(bb.h||1)),rotation:0,mirror:false,color:"#111111"};state.objects.push(o);state.selId=o.id;setTool("select");renderObjList();syncInputs();resetView();draw();return o;}
+function addObject(subpaths,name,height){histPush();const bb=bboxOf(subpaths);let h=height;if(!h||h>40||h<0.2)h=(bb.h>0.2&&bb.h<40?bb.h:4);const o={id:nextId++,subpaths,bbox:bb,name:name||("object "+(state.objects.length+1)),posX:1,posY:1,height:h,width:bb.w*(h/(bb.h||1)),rotation:0,mirror:false,color:"#111111"};state.objects.push(o);state.selIds=[o.id];state.selId=o.id;setTool("select");renderObjList();syncInputs();resetView();draw();return o;}
 function selected(){return state.objects.find(o=>o.id===state.selId)||null;}
-function selectObj(id){state.selId=id;renderObjList();syncInputs();draw();}
-function deleteObj(id){histPush();state.objects=state.objects.filter(o=>o.id!==id);state.selId=state.objects.length?state.objects[state.objects.length-1].id:null;renderObjList();syncInputs();draw();}
-function duplicateObj(id){const o=state.objects.find(x=>x.id===id);if(!o)return;histPush();const c=JSON.parse(JSON.stringify(o));c.id=nextId++;c.posX+=0.5;c.posY+=0.5;c.name=o.name+" copy";state.objects.push(c);state.selId=c.id;renderObjList();syncInputs();draw();}
+/* ---- multi-selection. state.selId is the PRIMARY (last-clicked) piece and is
+   what the Size & Position panel edits; state.selIds is the whole set. ---- */
+function selIds(){const a=state.selIds&&state.selIds.length?state.selIds:(state.selId?[state.selId]:[]);return a;}
+function selObjs(){const s=new Set(selIds());return state.objects.filter(o=>s.has(o.id));}
+function isSel(id){return selIds().indexOf(id)>=0;}
+function multiSel(){return selIds().length>1;}
+function setSel(ids){const live=new Set(state.objects.map(o=>o.id));const v=[];for(const id of ids)if(live.has(id)&&v.indexOf(id)<0)v.push(id);
+  state.selIds=v;state.selId=v.length?v[v.length-1]:null;renderObjList();syncInputs();updSelUI();draw();}
+function toggleSel(id){const a=selIds().slice(),i=a.indexOf(id);if(i>=0)a.splice(i,1);else a.push(id);setSel(a);}
+function selectAll(){setSel(state.objects.map(o=>o.id));}
+function selectObj(id){setSel(id==null?[]:[id]);}
+function deleteSel(){const ids=selIds();if(!ids.length)return;histPush();const s=new Set(ids);state.objects=state.objects.filter(o=>!s.has(o.id));
+  setSel(state.objects.length?[state.objects[state.objects.length-1].id]:[]);}
+function deleteObj(id){histPush();state.objects=state.objects.filter(o=>o.id!==id);setSel(state.objects.length?[state.objects[state.objects.length-1].id]:[]);}
+function duplicateObj(id){const o=state.objects.find(x=>x.id===id);if(!o)return;histPush();const c=JSON.parse(JSON.stringify(o));c.id=nextId++;c.posX+=0.5;c.posY+=0.5;c.name=o.name+" copy";state.objects.push(c);setSel([c.id]);}
+/* ============================ Align · Distribute · Arrange ============================ */
+/* Everything below measures the object's ORIENTED box (objBox), so a rotated piece
+   aligns by the edge you actually see on the mat, not by an invisible square one. */
+function objAABB(o){const C=objBox(o).corners;let a=Infinity,b=Infinity,d=-Infinity,e=-Infinity;
+  for(const p of C){if(p[0]<a)a=p[0];if(p[1]<b)b=p[1];if(p[0]>d)d=p[0];if(p[1]>e)e=p[1];}
+  return {minX:a,minY:b,maxX:d,maxY:e,w:d-a,h:e-b,cx:(a+d)/2,cy:(b+e)/2};}
+function selBBox(){const os=selObjs();if(!os.length)return null;let a=Infinity,b=Infinity,d=-Infinity,e=-Infinity;
+  for(const o of os){const r=objAABB(o);if(r.minX<a)a=r.minX;if(r.minY<b)b=r.minY;if(r.maxX>d)d=r.maxX;if(r.maxY>e)e=r.maxY;}
+  return {minX:a,minY:b,maxX:d,maxY:e,w:d-a,h:e-b,cx:(a+d)/2,cy:(b+e)/2};}
+function matRect(){const L=layout();return {minX:0,minY:0,maxX:L.viewLen,maxY:L.matW,w:L.viewLen,h:L.matW,cx:L.viewLen/2,cy:L.matW/2};}
+/* one piece selected -> align to the mat; several -> align them to each other */
+function alignSel(mode){const os=selObjs();if(!os.length)return;
+  const ref=os.length>1?selBBox():matRect();
+  histPush();
+  for(const o of os){const r=objAABB(o);
+    if(mode==="left")o.posX+=ref.minX-r.minX;
+    else if(mode==="right")o.posX+=ref.maxX-r.maxX;
+    else if(mode==="hcenter")o.posX+=ref.cx-r.cx;
+    else if(mode==="top")o.posY+=ref.minY-r.minY;
+    else if(mode==="bottom")o.posY+=ref.maxY-r.maxY;
+    else if(mode==="vcenter")o.posY+=ref.cy-r.cy;}
+  syncInputs();draw();histDropIfSame();}
+/* even GAPS between edges (not even centres) — the outer two pieces never move */
+function distributeSel(axis){const os=selObjs();if(os.length<3)return;
+  const rec=os.map(o=>({o,r:objAABB(o)})),key=axis==="h"?"minX":"minY",siz=axis==="h"?"w":"h",mx=axis==="h"?"maxX":"maxY";
+  rec.sort((a,b)=>a.r[key]-b.r[key]);
+  const span=rec[rec.length-1].r[mx]-rec[0].r[key];let sum=0;for(const t of rec)sum+=t.r[siz];
+  const gap=(span-sum)/(rec.length-1);
+  histPush();let cur=rec[0].r[key];
+  for(const t of rec){if(axis==="h")t.o.posX+=cur-t.r.minX;else t.o.posY+=cur-t.r.minY;cur+=t.r[siz]+gap;}
+  syncInputs();draw();histDropIfSame();}
+/* z-order. state.objects is back-to-front, so the tail of the array draws (and cuts) last. */
+function arrangeSel(mode){const ids=selIds();if(!ids.length)return;const S=new Set(ids);
+  const keep=state.objects.filter(o=>!S.has(o.id)),move=state.objects.filter(o=>S.has(o.id));
+  if(!move.length||!keep.length)return;
+  histPush();
+  if(mode==="front")state.objects=keep.concat(move);
+  else if(mode==="back")state.objects=move.concat(keep);
+  else{const dir=mode==="forward"?1:-1,idx=[];
+    state.objects.forEach((o,i)=>{if(S.has(o.id))idx.push(i);});
+    const order=dir>0?idx.slice().reverse():idx;
+    for(const i of order){const j=i+dir;if(j<0||j>=state.objects.length)continue;if(S.has(state.objects[j].id))continue;
+      const t=state.objects[i];state.objects[i]=state.objects[j];state.objects[j]=t;}}
+  renderObjList();draw();histDropIfSame();}
+function updSelUI(){const n=selIds().length,el=$("selCount");
+  if(el)el.textContent=n===0?"Nothing selected":(n===1?"1 piece selected · aligns to the mat":n+" pieces selected");
+  document.querySelectorAll("#alignGrid button").forEach(b=>b.disabled=n<1);
+  document.querySelectorAll("#distGrid button").forEach(b=>b.disabled=n<3);
+  document.querySelectorAll("#arrGrid button").forEach(b=>b.disabled=n<1||state.objects.length<2);}
+/* ---- group (multi-selection) transform box ---- */
+function groupHandles(gb){return [[gb.minX,gb.minY],[gb.maxX,gb.minY],[gb.minX,gb.maxY],[gb.maxX,gb.maxY]];}
+function groupRotHandle(gb,ppi){return [gb.cx,gb.minY-26/Math.max(1e-6,ppi)];}
+function groupHit(x,y){const gb=selBBox();if(!gb)return null;
+  const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany;
+  const near=(pt,r)=>Math.abs(x-(ox+pt[0]*ppi))<r&&Math.abs(y-(oy+pt[1]*ppi))<r;
+  if(near(groupRotHandle(gb,ppi),10))return {key:"rot",gb};
+  const H=groupHandles(gb);for(let i=0;i<4;i++)if(near(H[i],9))return {key:"c"+i,gb};
+  return null;}
+function groupSnap(){return selObjs().map(o=>{const b=objBox(o);return {id:o.id,cx:b.center[0],cy:b.center[1],W:objW(o),H:o.height,rot:o.rotation||0};});}
+function objsInRect(r){return state.objects.filter(o=>{const a=objAABB(o);return a.maxX>=r.x0&&a.minX<=r.x1&&a.maxY>=r.y0&&a.minY<=r.y1;});}
 function objW(o){return (o.width!=null)?o.width:o.bbox.w*(o.height/(o.bbox.h||1));}
 function objSX(o){return objW(o)/(o.bbox.w||1);}function objSY(o){return o.height/(o.bbox.h||1);}
 function objWidth(o){return objW(o);}
 function objPolylines(o){const sx=objSX(o),sy=objSY(o),{minX,minY,w,h}=o.bbox,desW=w*sx,desH=h*sy,rot=o.rotation*Math.PI/180,cx=desW/2,cy=desH/2,out=[];for(const sp of o.subpaths){const line=[];for(let [x,y] of sp){let nx=(x-minX)*sx,ny=(y-minY)*sy;if(o.mirror)nx=desW-nx;let dx=nx-cx,dy=ny-cy;line.push([dx*Math.cos(rot)-dy*Math.sin(rot)+cx+o.posX,dx*Math.sin(rot)+dy*Math.cos(rot)+cy+o.posY]);}out.push(line);}return out;}
 function allLines(){const out=[];for(const o of state.objects)for(const l of objPolylines(o))out.push(l);return out;}
 function unionBBox(){const pl=allLines();return pl.length?bboxOf(pl):{minX:0,minY:0,w:0,h:0};}
-function renderObjList(){const el=$("objList");if(!state.objects.length){el.innerHTML='<div class="empty">Nothing yet — Import or Add Text.</div>';return;}el.innerHTML="";state.objects.forEach(o=>{const row=document.createElement("div");row.className="objrow"+(o.id===state.selId?" sel":"");const nm=document.createElement("span");nm.className="nm";nm.textContent=o.name;nm.onclick=()=>selectObj(o.id);const b=document.createElement("button");b.textContent="Select";b.onclick=()=>selectObj(o.id);row.appendChild(nm);row.appendChild(b);el.appendChild(row);});}
-function syncInputs(){const o=selected();if(!o){$("widthIn").value="0";$("heightIn").value="0";setRot(0);$("mirror").checked=false;updateDims();return;}if(o.width==null)o.width=objWidth(o);$("heightIn").value=o.height.toFixed(2);$("widthIn").value=objWidth(o).toFixed(2);$("posX").value=o.posX.toFixed(2);$("posY").value=o.posY.toFixed(2);setRot(o.rotation);$("mirror").checked=o.mirror;updateDims();}
+function renderObjList(){const el=$("objList");if(!state.objects.length){el.innerHTML='<div class="empty">Nothing yet — Import or Add Text.</div>';return;}el.innerHTML="";state.objects.forEach(o=>{const row=document.createElement("div");row.className="objrow"+(isSel(o.id)?" sel":"");const nm=document.createElement("span");nm.className="nm";nm.textContent=o.name;const pick=ev=>{if(ev.shiftKey||ev.ctrlKey||ev.metaKey)toggleSel(o.id);else selectObj(o.id);};nm.onclick=pick;const b=document.createElement("button");b.textContent="Select";b.onclick=pick;row.appendChild(nm);row.appendChild(b);el.appendChild(row);});}
+function syncInputs(){const o=selected();if(!o){$("widthIn").value="0";$("heightIn").value="0";setRot(0);$("mirror").checked=false;updateDims();updSelUI();return;}if(o.width==null)o.width=objWidth(o);$("heightIn").value=o.height.toFixed(2);$("widthIn").value=objWidth(o).toFixed(2);$("posX").value=o.posX.toFixed(2);$("posY").value=o.posY.toFixed(2);setRot(o.rotation);$("mirror").checked=o.mirror;updateDims();updSelUI();}
 function normDeg(d){d=d%360;if(d<0)d+=360;return d;}
 function setRot(r){r=normDeg(r||0);document.querySelectorAll("#rotSeg button").forEach(b=>b.classList.toggle("on",Math.abs(parseInt(b.dataset.rot)-r)<0.001));const f=$("rotDeg");if(f&&document.activeElement!==f)f.value=(Math.round(r*10)/10);}
 
@@ -1659,7 +1768,7 @@ function svgStringToSubpaths(svgStr,darkOnly){const doc=new DOMParser().parseFro
 function traceRun(replace){if(!traceData)return;if(typeof Potrace==="undefined"){alert("Tracing engine not loaded. SVG/DXF still work offline.");return;}const thr=parseInt($("thresh").value),inv=$("traceInvert").checked,sm=parseInt(($("smooth")||{}).value||"3"),bin=binarize(traceData,thr,inv);const alphamax=Math.min(1.334,0.2+sm*0.14),opttol=0.15+sm*0.09;let svg;try{if(Potrace.clear)Potrace.clear();Potrace.setParameter({turdsize:2,alphamax:alphamax,opttolerance:opttol,optcurve:true,turnpolicy:"minority"});Potrace.loadImageData(bin);Potrace.process(function(){});svg=Potrace.getSVG(1);}catch(e){alert("Trace failed: "+(e.message||e));return;}const dm=svg.match(/ d="([^"]*)"/),nodes=dm?parsePathToNodes(dm[1]):[],subs=nodes.length?nodesToSubpaths(nodes):svgStringToSubpaths(svg,false);if(!subs.length){alert("Nothing traced — adjust the threshold or Invert.");return;}if(replace&&lastTraceId!=null){const o=state.objects.find(x=>x.id===lastTraceId);if(o){histPush("retrace");o.subpaths=subs;o.nodes=nodes.length?nodes:null;o.bbox=bboxOf(subs);$("widthIn").value=objWidth(o).toFixed(2);renderObjList();draw();return;}}const o=addObject(subs,"traced image",3);o.nodes=nodes.length?nodes:null;lastTraceId=o.id;}
 
 /* ---- grid ---- */
-function makeGrid(){const o=selected();if(!o){alert("Select an object first.");return;}histPush();const n=Math.max(1,parseInt($("copyN").value||"1")),gap=parseFloat($("copyGap").value||"0.5"),matW=parseFloat($("matWidth").value||"24"),w=objWidth(o),h=o.height,perCol=Math.max(1,Math.floor((matW+gap)/(h+gap))),sX=o.posX,sY=o.posY;state.objects=state.objects.filter(x=>x.id!==o.id);for(let i=0;i<n;i++){const col=Math.floor(i/perCol),row=i%perCol,c=JSON.parse(JSON.stringify(o));c.id=nextId++;c.posX=sX+col*(w+gap);c.posY=sY+row*(h+gap);c.name=o.name+" #"+(i+1);state.objects.push(c);if(i===0)state.selId=c.id;}renderObjList();syncInputs();resetView();draw();}
+function makeGrid(){const o=selected();if(!o){alert("Select an object first.");return;}histPush();const n=Math.max(1,parseInt($("copyN").value||"1")),gap=parseFloat($("copyGap").value||"0.5"),matW=parseFloat($("matWidth").value||"24"),w=objWidth(o),h=o.height,perCol=Math.max(1,Math.floor((matW+gap)/(h+gap))),sX=o.posX,sY=o.posY,newIds=[];state.objects=state.objects.filter(x=>x.id!==o.id);for(let i=0;i<n;i++){const col=Math.floor(i/perCol),row=i%perCol,c=JSON.parse(JSON.stringify(o));c.id=nextId++;c.posX=sX+col*(w+gap);c.posY=sY+row*(h+gap);c.name=o.name+" #"+(i+1);state.objects.push(c);newIds.push(c.id);}resetView();setSel(newIds);}
 
 /* ---- canvas + rulers ---- */
 const cv=$("cv"),ctx=cv.getContext("2d");
@@ -1680,7 +1789,7 @@ function draw(){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+M
   ctx.strokeStyle="rgba(0,0,0,.06)";for(let i=0;i<=viewLen;i++){const gx=ox+i*ppi;ctx.beginPath();ctx.moveTo(gx,oy);ctx.lineTo(gx,oy+mh);ctx.stroke();}for(let j=0;j<=matW;j++){const gy=oy+j*ppi;ctx.beginPath();ctx.moveTo(ox,gy);ctx.lineTo(ox+mw,gy);ctx.stroke();}
   if($("weed").checked&&state.objects.length){const m=0.25;ctx.strokeStyle="rgba(30,111,224,.55)";ctx.setLineDash([5,4]);ctx.strokeRect(ox+(bb.minX-m)*ppi,oy+(bb.minY-m)*ppi,(bb.w+2*m)*ppi,(bb.h+2*m)*ppi);ctx.setLineDash([]);}
   if($("regMarks").checked&&state.objects.length){ctx.strokeStyle="#d98a00";ctx.lineWidth=1.6;for(const seg of regMarkLines(bb)){ctx.beginPath();seg.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}}
-  for(const o of state.objects){const sel=o.id===state.selId;ctx.strokeStyle=o.color||"#111";ctx.lineWidth=sel?1.7:1.2;for(const line of objPolylines(o)){ctx.beginPath();line.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}if(sel){
+  for(const o of state.objects){const sel=isSel(o.id),prim=sel&&!multiSel();ctx.strokeStyle=o.color||"#111";ctx.lineWidth=sel?1.7:1.2;for(const line of objPolylines(o)){ctx.beginPath();line.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}if(sel&&!prim)drawSelDash(o,P);if(prim){
     const b=objBox(o),C=b.corners,E=b.edges,rh=objRotHandle(o,ppi);
     ctx.strokeStyle="#1e6fe0";ctx.lineWidth=1;ctx.setLineDash([4,3]);
     ctx.beginPath();[C[0],C[1],C[3],C[2]].forEach((pt,i)=>{const[px,py]=P(pt[0],pt[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.closePath();ctx.stroke();
@@ -1705,10 +1814,25 @@ function draw(){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+M
       ctx.fillText(txt,rx,by+bh/2+0.5);ctx.textAlign="start";ctx.textBaseline="alphabetic";
     }
   }}
+  drawGroupUI(P,ppi);drawMarquee(P);
   ctx.restore();
   drawNodes();
   drawRulers(ox,oy,ppi,viewLen,matW,L);
   $("matLabel").textContent=matW+'"';$("pathCount").textContent=allLines().length+" paths";updateDims();}
+function drawSelDash(o,P){const C=objBox(o).corners;ctx.strokeStyle="#1e6fe0";ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();[C[0],C[1],C[3],C[2]].forEach((pt,i)=>{const[px,py]=P(pt[0],pt[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.closePath();ctx.stroke();ctx.setLineDash([]);}
+function drawGroupUI(P,ppi){if(!multiSel())return;const gb=selBBox();if(!gb)return;
+  const[ax,ay]=P(gb.minX,gb.minY),[bx,by]=P(gb.maxX,gb.maxY);
+  ctx.strokeStyle="#1e6fe0";ctx.lineWidth=1.2;ctx.setLineDash([6,4]);ctx.strokeRect(ax,ay,bx-ax,by-ay);ctx.setLineDash([]);
+  const rh=groupRotHandle(gb,ppi),[rx,ry]=P(rh[0],rh[1]),[tx,ty]=P(gb.cx,gb.minY);
+  ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(rx,ry);ctx.stroke();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(rx,ry,6,0,7);ctx.fill();ctx.stroke();
+  ctx.fillStyle="#1e6fe0";ctx.font="bold 10px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⟳",rx,ry+0.5);ctx.textAlign="start";ctx.textBaseline="alphabetic";
+  ctx.fillStyle="#1e6fe0";groupHandles(gb).forEach(pt=>{const[px,py]=P(pt[0],pt[1]);ctx.fillRect(px-4,py-4,8,8);});}
+function drawMarquee(P){if(!marq)return;const[ax,ay]=P(marq.x0,marq.y0),[bx,by]=P(marq.x1,marq.y1);
+  const rx=Math.min(ax,bx),ry=Math.min(ay,by),rw=Math.abs(bx-ax),rh=Math.abs(by-ay);
+  ctx.fillStyle="rgba(30,111,224,.10)";ctx.fillRect(rx,ry,rw,rh);
+  ctx.strokeStyle="#1e6fe0";ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.strokeRect(rx,ry,rw,rh);ctx.setLineDash([]);}
 function drawRulers(ox,oy,ppi,viewLen,matW,L){
   ctx.fillStyle="#f0f0f0";ctx.fillRect(0,0,L.W,RT);ctx.fillRect(0,0,RL,L.H);
   ctx.strokeStyle="#b4b4b4";ctx.beginPath();ctx.moveTo(0,RT);ctx.lineTo(L.W,RT);ctx.moveTo(RL,0);ctx.lineTo(RL,L.H);ctx.stroke();
@@ -1753,9 +1877,19 @@ function handleCursor(key,o){
   const a=normDeg(base+(o.rotation||0)),q=Math.round(a/45)%4;
   return ["ew-resize","nwse-resize","ns-resize","nesw-resize"][q];
 }
-let drag=null;
+let drag=null,marq=null;
 cv.addEventListener("mousedown",e=>{const {x,y}=evtCanvas(e);if(state.tool==="node"){nodeMouseDown(x,y,e);return;}if(state.tool==="zoom"){const L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom),f=e.shiftKey?1/1.4:1.4;view.zoom=Math.min(24,Math.max(0.15,view.zoom*f));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();return;}
-  const selO=selected();
+  /* a multi-selection gets its own transform box; those handles win over the single-object ones */
+  if(multiSel()&&state.tool!=="pan"){
+    const gh=groupHit(x,y);
+    if(gh){
+      histPush();const gb=gh.gb,w0=screenToWorld(x,y),snap=groupSnap();
+      if(gh.key==="rot")drag={mode:"grot",gx:gb.cx,gy:gb.cy,a0:Math.atan2(w0.wy-gb.cy,w0.wx-gb.cx),snap};
+      else{const A=groupHandles(gb)[3-parseInt(gh.key[1])];drag={mode:"gscale",ax:A[0],ay:A[1],W0:gb.w,H0:gb.h,snap};}
+      return;
+    }
+  }
+  const selO=multiSel()?null:selected();
   if(selO&&state.tool!=="pan"){
     const hh=handleHit(selO,x,y);
     if(hh){
@@ -1770,11 +1904,21 @@ cv.addEventListener("mousedown",e=>{const {x,y}=evtCanvas(e);if(state.tool==="no
       return;
     }
   }
-  const {wx,wy}=screenToWorld(x,y),hit=(state.tool==="pan")?null:objAt(wx,wy);
-  if(hit){selectObj(hit.id);histPush();drag={mode:"move",id:hit.id,sx:e.clientX,sy:e.clientY,ox:hit.posX,oy:hit.posY};}else drag={mode:"pan",sx:e.clientX,sy:e.clientY,px:view.panx,py:view.pany};});
+  const {wx,wy}=screenToWorld(x,y),hit=(state.tool==="pan")?null:objAt(wx,wy),add=e.shiftKey||e.ctrlKey||e.metaKey;
+  if(hit){
+    if(add){toggleSel(hit.id);return;}
+    if(!isSel(hit.id))selectObj(hit.id);
+    histPush();drag={mode:"gmove",sx:e.clientX,sy:e.clientY,snap:selObjs().map(o=>({id:o.id,px:o.posX,py:o.posY}))};
+  }else if(state.tool==="select"&&e.button===0){
+    if(!add)setSel([]);
+    marq={x0:wx,y0:wy,x1:wx,y1:wy,add};drag={mode:"marq"};draw();
+  }else drag={mode:"pan",sx:e.clientX,sy:e.clientY,px:view.panx,py:view.pany};});
 window.addEventListener("mousemove",e=>{const {x,y}=evtCanvas(e),{wx,wy}=screenToWorld(x,y);if(x>=RL&&y>=RT)$("coord").textContent=`X: ${wx.toFixed(2)}"  Y: ${wy.toFixed(2)}"`;
   if(state.tool==="node"){nodeMouseMove(wx,wy);return;}
-  if(!drag){const so=selected();if(so&&state.tool==="select"){const hh=handleHit(so,x,y);cv.style.cursor=hh?handleCursor(hh.key,so):"default";}return;}
+  if(!drag){if(state.tool==="select"){
+      if(multiSel()){const gh=groupHit(x,y);cv.style.cursor=gh?(gh.key==="rot"?"grab":"nwse-resize"):"default";}
+      else{const so=selected();if(so){const hh=handleHit(so,x,y);cv.style.cursor=hh?handleCursor(hh.key,so):"default";}else cv.style.cursor="default";}
+    }return;}
   if(drag.mode==="pan"){view.panx=drag.px+(e.clientX-drag.sx);view.pany=drag.py+(e.clientY-drag.sy);draw();}
   else if(drag.mode==="rot"){const o=state.objects.find(z=>z.id===drag.id);if(!o)return;
     let deg=drag.rot0+(Math.atan2(wy-drag.cy,wx-drag.cx)-drag.a0)*180/Math.PI;
@@ -1799,8 +1943,41 @@ window.addEventListener("mousemove",e=>{const {x,y}=evtCanvas(e),{wx,wy}=screenT
     o.posX=drag.aw[0]-(ddx*cos-ddy*sin+cx);
     o.posY=drag.aw[1]-(ddx*sin+ddy*cos+cy);
     syncInputs();draw();}
-  else{const L=layout(),ppi=L.base*view.zoom,o=state.objects.find(z=>z.id===drag.id);if(!o)return;o.posX=drag.ox+(e.clientX-drag.sx)/ppi;o.posY=drag.oy+(e.clientY-drag.sy)/ppi;$("posX").value=o.posX.toFixed(2);$("posY").value=o.posY.toFixed(2);draw();}});
-window.addEventListener("mouseup",()=>{if(nodeDrag){const o=state.objects.find(z=>z.id===nodeDrag.id);if(o){objCommitNodes(o);syncInputs();draw();}nodeDrag=null;histDropIfSame();}if(drag&&(drag.mode==="move"||drag.mode==="scale"||drag.mode==="rot")){drag=null;histDropIfSame();}drag=null;});
+  else if(drag.mode==="marq"){if(marq){marq.x1=wx;marq.y1=wy;draw();}}
+  else if(drag.mode==="grot"){
+    /* every piece orbits the group centre AND spins on its own centre by the same angle */
+    let deg=(Math.atan2(wy-drag.gy,wx-drag.gx)-drag.a0)*180/Math.PI;
+    if(e.shiftKey)deg=Math.round(deg/15)*15;
+    const th=deg*Math.PI/180,cos=Math.cos(th),sin=Math.sin(th);
+    for(const sn of drag.snap){const o=state.objects.find(z=>z.id===sn.id);if(!o)continue;
+      const dx=sn.cx-drag.gx,dy=sn.cy-drag.gy;
+      o.rotation=normDeg(sn.rot+deg);
+      o.posX=(dx*cos-dy*sin+drag.gx)-objW(o)/2;o.posY=(dx*sin+dy*cos+drag.gy)-o.height/2;}
+    syncInputs();draw();}
+  else if(drag.mode==="gscale"){
+    /* proportional group scale about the opposite corner: least-squares fit of the drag */
+    const dx=wx-drag.ax,dy=wy-drag.ay,nw=Math.abs(dx),nh=Math.abs(dy);
+    let f=(nw*drag.W0+nh*drag.H0)/(drag.W0*drag.W0+drag.H0*drag.H0);
+    if(!isFinite(f)||f<0.01)f=0.01;
+    for(const sn of drag.snap){const o=state.objects.find(z=>z.id===sn.id);if(!o)continue;
+      const W=Math.max(0.05,sn.W*f),H=Math.max(0.05,sn.H*f);
+      o.width=W;o.height=H;
+      o.posX=drag.ax+(sn.cx-drag.ax)*f-W/2;o.posY=drag.ay+(sn.cy-drag.ay)*f-H/2;}
+    syncInputs();draw();}
+  else if(drag.mode==="gmove"){const L=layout(),ppi=L.base*view.zoom,dx=(e.clientX-drag.sx)/ppi,dy=(e.clientY-drag.sy)/ppi;
+    for(const sn of drag.snap){const o=state.objects.find(z=>z.id===sn.id);if(o){o.posX=sn.px+dx;o.posY=sn.py+dy;}}
+    syncInputs();draw();}});
+window.addEventListener("mouseup",()=>{
+  if(nodeDrag){const o=state.objects.find(z=>z.id===nodeDrag.id);if(o){objCommitNodes(o);syncInputs();draw();}nodeDrag=null;histDropIfSame();}
+  if(drag&&drag.mode==="marq"&&marq){
+    const r={x0:Math.min(marq.x0,marq.x1),y0:Math.min(marq.y0,marq.y1),x1:Math.max(marq.x0,marq.x1),y1:Math.max(marq.y0,marq.y1)},
+          real=(r.x1-r.x0)>0.02||(r.y1-r.y0)>0.02,add=marq.add,found=real?objsInRect(r).map(o=>o.id):[];
+    marq=null;drag=null;
+    if(real)setSel(add?selIds().concat(found):found);else draw();
+    return;
+  }
+  if(drag&&(drag.mode==="gmove"||drag.mode==="scale"||drag.mode==="rot"||drag.mode==="gscale"||drag.mode==="grot")){drag=null;histDropIfSame();}
+  drag=null;});
 
 /* ============================ Node / Point Editor (Silhouette-style) ============================ */
 const NSEG=24;let nodeSel=null,nodeDrag=null;
@@ -1859,8 +2036,8 @@ window.addEventListener("keydown",e=>{if(state.tool!=='node')return;if(/INPUT|TE
 
 /* ============================ Undo / Redo history ============================ */
 const HIST_MAX=80;let histUndo=[],histRedo=[],histTag=null,histTime=0,histBusy=false;
-function histSnap(){return JSON.stringify({o:state.objects,s:state.selId,n:nextId});}
-function histApply(js){histBusy=true;const d=JSON.parse(js);state.objects=d.o;state.selId=d.s;nextId=d.n;nodeSel=null;nodeDrag=null;drag=null;renderObjList();syncInputs();draw();histBusy=false;}
+function histSnap(){return JSON.stringify({o:state.objects,s:state.selId,m:state.selIds,n:nextId});}
+function histApply(js){histBusy=true;const d=JSON.parse(js);state.objects=d.o;state.selId=d.s;state.selIds=d.m||(d.s?[d.s]:[]);nextId=d.n;nodeSel=null;nodeDrag=null;drag=null;marq=null;renderObjList();syncInputs();draw();histBusy=false;}
 function histUI(){const u=$("undoBtn"),r=$("redoBtn");if(u)u.classList.toggle("dis",!histUndo.length);if(r)r.classList.toggle("dis",!histRedo.length);}
 /* push the CURRENT state onto the undo stack, before a mutation happens.
    tag = coalescing key: repeated pushes with the same tag inside 900ms collapse
@@ -1885,7 +2062,13 @@ function undo(){if(!histUndo.length)return;histRedo.push(histSnap());histApply(h
 function redo(){if(!histRedo.length)return;histUndo.push(histSnap());histApply(histRedo.pop());histBreak();histUI();}
 
 /* ---- keyboard: nudge / copy / paste / duplicate / delete (select mode) ---- */
-let clipObj=null;
+let clipObj=null,clipObjs=[];
+function pasteClip(){if(!clipObjs.length)return;histPush();const ids=[];
+  for(const src of clipObjs){const c=JSON.parse(JSON.stringify(src));c.id=nextId++;c.posX=(c.posX||1)+0.5;c.posY=(c.posY||1)+0.5;c.name=(c.name||"object")+" copy";state.objects.push(c);ids.push(c.id);}
+  setSel(ids);}
+function duplicateSel(){const os=selObjs();if(!os.length)return;histPush();const ids=[];
+  for(const src of os){const c=JSON.parse(JSON.stringify(src));c.id=nextId++;c.posX+=0.5;c.posY+=0.5;c.name=src.name+" copy";state.objects.push(c);ids.push(c.id);}
+  setSel(ids);}
 function isTyping(){return /INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||'');}
 /* Undo/redo works in every tool, including the point editor. */
 window.addEventListener("keydown",e=>{
@@ -1897,18 +2080,19 @@ window.addEventListener("keydown",e=>{
 window.addEventListener("keydown",e=>{
   if(state.tool==='node')return;
   if(isTyping())return;
-  const o=selected(),k=e.key,mod=e.ctrlKey||e.metaKey;
+  const k=e.key,mod=e.ctrlKey||e.metaKey,os=selObjs();
   if(mod&&(k==='z'||k==='Z'||k==='y'||k==='Y'))return;
-  if(mod&&(k==='c'||k==='C')){if(o)clipObj=JSON.parse(JSON.stringify(o));e.preventDefault();return;}
-  if(mod&&(k==='v'||k==='V')){if(clipObj){histPush();const c=JSON.parse(JSON.stringify(clipObj));c.id=nextId++;c.posX=(c.posX||1)+0.5;c.posY=(c.posY||1)+0.5;c.name=(c.name||'object')+' copy';state.objects.push(c);state.selId=c.id;renderObjList();syncInputs();draw();}e.preventDefault();return;}
-  if(mod&&(k==='d'||k==='D')){if(o)duplicateObj(o.id);e.preventDefault();return;}
-  if(!o)return;
-  if(k==='Delete'||k==='Backspace'){deleteObj(o.id);e.preventDefault();return;}
-  const step=e.shiftKey?0.5:0.05;
-  if(k==='ArrowLeft'){histPush('nudge');o.posX-=step;syncInputs();draw();e.preventDefault();}
-  else if(k==='ArrowRight'){histPush('nudge');o.posX+=step;syncInputs();draw();e.preventDefault();}
-  else if(k==='ArrowUp'){histPush('nudge');o.posY-=step;syncInputs();draw();e.preventDefault();}
-  else if(k==='ArrowDown'){histPush('nudge');o.posY+=step;syncInputs();draw();e.preventDefault();}
+  if(mod&&(k==='a'||k==='A')){selectAll();e.preventDefault();return;}
+  if(mod&&(k===']'||k==='}')){arrangeSel(e.shiftKey?'front':'forward');e.preventDefault();return;}
+  if(mod&&(k==='['||k==='{')){arrangeSel(e.shiftKey?'back':'backward');e.preventDefault();return;}
+  if(mod&&(k==='c'||k==='C')){if(os.length){clipObjs=JSON.parse(JSON.stringify(os));clipObj=clipObjs[clipObjs.length-1];}e.preventDefault();return;}
+  if(mod&&(k==='v'||k==='V')){pasteClip();e.preventDefault();return;}
+  if(mod&&(k==='d'||k==='D')){duplicateSel();e.preventDefault();return;}
+  if(!os.length)return;
+  if(k==='Delete'||k==='Backspace'){deleteSel();e.preventDefault();return;}
+  const step=e.shiftKey?0.5:0.05;let dx=0,dy=0;
+  if(k==='ArrowLeft')dx=-step;else if(k==='ArrowRight')dx=step;else if(k==='ArrowUp')dy=-step;else if(k==='ArrowDown')dy=step;else return;
+  histPush('nudge');for(const o of os){o.posX+=dx;o.posY+=dy;}syncInputs();draw();e.preventDefault();
 });
 $("undoBtn").onclick=undo;$("redoBtn").onclick=redo;
 
@@ -1930,7 +2114,7 @@ function saveAsset(){const o=selected();if(!o){alert("Select an object to save."
 function addAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("jzakcuts.assets");if(a[k]){const d=a[k];addObject(JSON.parse(JSON.stringify(d.subpaths)),k,d.bbox&&d.bbox.h<40?d.bbox.h:3);}}
 function delAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("jzakcuts.assets");delete a[k];lsSet("jzakcuts.assets",a);refreshAssets();}
 function jobSnapshot(){return {objects:state.objects.map(o=>({subpaths:o.subpaths,bbox:o.bbox,name:o.name,posX:o.posX,posY:o.posY,height:o.height,width:objWidth(o),rotation:o.rotation,mirror:o.mirror,color:o.color})),settings:{matWidth:$("matWidth").value,stepsPerIn:$("stepsPerIn").value,speed:$("speed").value,force:$("force").value,bladeOff:$("bladeOff").value,bladeComp:$("bladeComp").checked,flipX:$("flipX").checked,flipY:$("flipY").checked,weed:$("weed").checked,regMarks:$("regMarks").checked}};}
-function applySnapshot(j){if(!j||!j.objects){alert("That file isn't a JZAK Cuts job.");return;}histPush();state.objects=j.objects.map(o=>{const bb=o.bbox||bboxOf(o.subpaths),h=o.height||3;return {id:nextId++,subpaths:o.subpaths,bbox:bb,name:o.name||"object",posX:o.posX||1,posY:o.posY||1,height:h,width:(o.width!=null?o.width:bb.w*(h/(bb.h||1))),rotation:o.rotation||0,mirror:!!o.mirror,color:o.color||"#111"};});state.selId=state.objects.length?state.objects[0].id:null;const st=j.settings||{},setIf=(id,v)=>{if(v!==undefined&&v!==null)$(id).value=v;};setIf("matWidth",st.matWidth);setIf("stepsPerIn",st.stepsPerIn);setIf("speed",st.speed);setIf("force",st.force);setIf("bladeOff",st.bladeOff);if(st.bladeComp!==undefined)$("bladeComp").checked=st.bladeComp;if(st.flipX!==undefined)$("flipX").checked=st.flipX;if(st.flipY!==undefined)$("flipY").checked=st.flipY;if(st.weed!==undefined)$("weed").checked=st.weed;if(st.regMarks!==undefined)$("regMarks").checked=st.regMarks;$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;$("frcOut").textContent=$("force").value;renderObjList();syncInputs();resetView();draw();}
+function applySnapshot(j){if(!j||!j.objects){alert("That file isn't a JZAK Cuts job.");return;}histPush();state.objects=j.objects.map(o=>{const bb=o.bbox||bboxOf(o.subpaths),h=o.height||3;return {id:nextId++,subpaths:o.subpaths,bbox:bb,name:o.name||"object",posX:o.posX||1,posY:o.posY||1,height:h,width:(o.width!=null?o.width:bb.w*(h/(bb.h||1))),rotation:o.rotation||0,mirror:!!o.mirror,color:o.color||"#111"};});state.selIds=state.objects.length?[state.objects[0].id]:[];state.selId=state.selIds[0]||null;const st=j.settings||{},setIf=(id,v)=>{if(v!==undefined&&v!==null)$(id).value=v;};setIf("matWidth",st.matWidth);setIf("stepsPerIn",st.stepsPerIn);setIf("speed",st.speed);setIf("force",st.force);setIf("bladeOff",st.bladeOff);if(st.bladeComp!==undefined)$("bladeComp").checked=st.bladeComp;if(st.flipX!==undefined)$("flipX").checked=st.flipX;if(st.flipY!==undefined)$("flipY").checked=st.flipY;if(st.weed!==undefined)$("weed").checked=st.weed;if(st.regMarks!==undefined)$("regMarks").checked=st.regMarks;$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;$("frcOut").textContent=$("force").value;renderObjList();syncInputs();resetView();draw();}
 function refreshJobSelect(){const jobs=lsGet("jzakcuts.jobs"),sel=$("jobSelect"),cur=sel.value;sel.innerHTML='<option value="">—</option>'+Object.keys(jobs).map(k=>`<option>${k.replace(/</g,"&lt;")}</option>`).join("");if(jobs[cur])sel.value=cur;}
 function saveJob(){const name=($("jobName").value||"").trim();if(!name){alert("Type a job name in the Job Library box first.");return;}if(!state.objects.length){alert("Add something to save.");return;}const jobs=lsGet("jzakcuts.jobs");jobs[name]=jobSnapshot();lsSet("jzakcuts.jobs",jobs);refreshJobSelect();$("jobSelect").value=name;$("jobName").value="";}
 function loadJob(){const k=$("jobSelect").value;if(!k){alert("Pick a saved job from the dropdown first.");return;}const jobs=lsGet("jzakcuts.jobs");if(jobs[k])applySnapshot(jobs[k]);}
@@ -1948,7 +2132,11 @@ function setTool(t){state.tool=t;document.querySelectorAll(".tool[data-tool]").f
 const ACT={
   import:()=>$("vecFile").click(), addtext:()=>setTool("text"),
   savejob:saveJob, loadjob:loadJob, exportsvg:exportSVG, plt:()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}download("jzak-cut.plt",h);},
-  dup:()=>{if(state.selId)duplicateObj(state.selId);}, del:()=>{if(state.selId)deleteObj(state.selId);},
+  dup:duplicateSel, del:deleteSel, selall:selectAll,
+  alignleft:()=>alignSel("left"), alignhc:()=>alignSel("hcenter"), alignright:()=>alignSel("right"),
+  aligntop:()=>alignSel("top"), alignvc:()=>alignSel("vcenter"), alignbottom:()=>alignSel("bottom"),
+  disth:()=>distributeSel("h"), distv:()=>distributeSel("v"),
+  arrfront:()=>arrangeSel("front"), arrforward:()=>arrangeSel("forward"), arrbackward:()=>arrangeSel("backward"), arrback:()=>arrangeSel("back"),
   zin:()=>{view.zoom=Math.min(24,view.zoom*1.25);updZoom();draw();}, zout:()=>{view.zoom=Math.max(0.15,view.zoom/1.25);updZoom();draw();}, fit:()=>{resetView();draw();},
   grid:makeGrid, weed:()=>{$("weed").checked=!$("weed").checked;draw();}, reg:()=>{$("regMarks").checked=!$("regMarks").checked;draw();},
   connect:connect, send:async()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}await writeToCutter(h);}, test:async()=>{if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}await writeToCutter(testCutHPGL());},
@@ -1970,7 +2158,10 @@ $("thresh").onchange=()=>traceRun(true);
 $("smooth").oninput=()=>{$("smOut").textContent=$("smooth").value;$("smV").textContent="("+$("smooth").value+")";};
 $("smooth").onchange=()=>traceRun(true);
 $("retraceBtn").onclick=()=>traceRun(true);$("traceInvert").onchange=()=>traceRun(true);
-$("dupBtn").onclick=()=>{if(state.selId)duplicateObj(state.selId);};$("delBtn").onclick=()=>{if(state.selId)deleteObj(state.selId);};$("gridBtn").onclick=makeGrid;
+$("dupBtn").onclick=duplicateSel;$("delBtn").onclick=deleteSel;$("gridBtn").onclick=makeGrid;
+document.querySelectorAll("#alignGrid button").forEach(b=>b.onclick=()=>alignSel(b.dataset.align));
+document.querySelectorAll("#distGrid button").forEach(b=>b.onclick=()=>distributeSel(b.dataset.dist));
+document.querySelectorAll("#arrGrid button").forEach(b=>b.onclick=()=>arrangeSel(b.dataset.arr));
 function editSel(fn){const o=selected();if(!o)return;fn(o);draw();}
 $("heightIn").oninput=()=>{histPush("size");editSel(o=>{if(o.width==null)o.width=objWidth(o);const nh=Math.max(0.05,parseFloat($("heightIn").value||"1"));if($("lockAspect").checked&&o.height>0.001){o.width=o.width*(nh/o.height);$("widthIn").value=o.width.toFixed(2);}o.height=nh;updateDims();});};
 $("widthIn").oninput=()=>{histPush("size");editSel(o=>{if(o.width==null)o.width=objWidth(o);const nw=Math.max(0.05,parseFloat($("widthIn").value||"1"));if($("lockAspect").checked&&o.width>0.001){o.height=o.height*(nw/o.width);$("heightIn").value=o.height.toFixed(2);}o.width=nw;updateDims();});};
