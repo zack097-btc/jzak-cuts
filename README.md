@@ -45,9 +45,9 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What it does (v8)
+## What it does (v9)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **weld / subtract / overlap / exclude** shape algebra · **offset contour cuts** (sticker borders and inline shrinks, round · sharp · clipped corners) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
 
 ### For truly exact, commercial-grade cuts
 
@@ -85,6 +85,26 @@ The **Layout** panel (and the Layout menu) has three rows of buttons that do the
 
 An align, distribute or arrange that would change nothing costs no undo step, so tapping the buttons to check is free.
 
+### Welding, shapes & contour cuts
+
+The **Weld, Shape & Offset** panel is the part that turns a pile of separate outlines into one clean cut path — the job Silhouette calls *Weld* and Illustrator calls the *Pathfinder*.
+
+**Weld** melts overlapping outlines into a single piece, so the blade stops cutting the seams where they cross. It works on a whole selection, and — the case that matters most — it works on **one** object too, because script lettering comes off the Text tab as a single piece whose letters already overlap each other. Weld it once and the connected script cuts as one continuous ribbon instead of a chain of sliced-up letters.
+
+**Subtract** punches everything above out of the piece underneath, **Overlap** keeps only the shared area, and **Exclude** keeps everything except the shared area. Subtract always works from the **stacking order** (bottom piece minus the ones above it), not from the order you happened to shift-click, which is the same rule the pro apps use — so if it comes out backwards, send a piece to the back and run it again.
+
+**Offset** builds a new outline a set distance away from the artwork. Set the **distance**, pick how corners are handled — **Round** for the soft look most decals use, **Sharp** for a true mitered point, **Clipped** for a flattened corner — and go outward or inward.
+
+**Outward** is the sticker/decal border: a 0.125″ contour is the standard. **Inward** eats into the shape, which is how you shrink a layer so it tucks under the one above it on multi-colour work without a hairline of the wrong colour showing at the edge.
+
+**One outline around everything selected** is on by default. Leave it on and several pieces get a single border wrapped around the whole group — separate letters become one weeded sticker, and pieces closer together than the offset distance merge into one outline. Turn it off and each piece gets its own border.
+
+The contour comes in as its own new piece dropped in **behind** the artwork, so it cuts first, it can carry its own colour, and it never gets in the way of clicking the original. Holes stay holes through an offset, so a ring or a letter *O* keeps its middle.
+
+Anything that would leave nothing behind — an inward offset wider than the shape, an overlap of two pieces that don't touch — says so and changes nothing, and costs no undo step. Everything else is a single `Ctrl+Z`.
+
+The maths runs in integer space at 0.00001″ resolution, and round corners are held within 0.0005″ of a true arc, so the result is exact enough that nothing about it is the limiting factor next to the blade.
+
 ### Undo / redo & keyboard shortcuts
 
 Every edit is undoable — moving, scaling, rotating, mirroring, colour changes, add/delete/duplicate, grid copies, re-traces, job loads, and point edits. Use the **↶ / ↷** buttons at the bottom of the toolbox or the keyboard.
@@ -113,7 +133,7 @@ History holds the last 80 steps. A run of small changes — dragging a handle, h
 
 ## Ideas for a future rev (just ask)
 
-True kerf offsetting · automatic nesting to minimise waste · print-and-cut auto-alignment via an optical sensor · centerline tracing for single-line engraving fonts.
+Automatic nesting to minimise waste · print-and-cut auto-alignment via an optical sensor · centerline tracing for single-line engraving fonts.
 
 ---
 
