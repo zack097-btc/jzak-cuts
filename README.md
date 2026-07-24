@@ -45,9 +45,17 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ---
 
-## What it does (v4)
+## What it does (v5)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **image tracing** (PNG/JPG/GIF/BMP/WEBP → cut lines) · **SVG & DXF import** · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (true Bézier curves via potrace, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+
+### For truly exact, commercial-grade cuts
+
+Tracing turns a *picture* into cut lines — it's only ever as sharp as the image you feed it (a Silhouette `.studio3` carries just a 512 px preview inside, so it can't trace razor-sharp). For exact work, feed **real vectors**: in Silhouette Studio use **File → Save As / Export** to **SVG** (Designer Edition) or **DXF** (free edition), then import that here — it comes in as exact, infinitely scalable vector paths, no tracing. For logos you only have as images, use the **highest-resolution** source you can (original art / PDF / large PNG); potrace on clean high-res art is excellent.
+
+### Point / node editing (the ✎ tool)
+
+Select a traced or imported object, pick the **✎ Edit points** tool, and you get real vector node editing: **green squares** are corner points, **blue circles** are smooth/curve points. Drag a point to move it; drag its **handles** to reshape the curve (smooth points keep their handles aligned like Silhouette); **double-click a point** to switch it between corner and smooth; **double-click a line** to add a point; press **Delete** to remove the selected point. Every edit updates the cut path live.
 
 ### Using the v4 features
 
@@ -63,4 +71,4 @@ True kerf offsetting · automatic nesting to minimise waste · print-and-cut aut
 
 ---
 
-*Built for JZac Designs. Dependencies (opentype.js from cdnjs, default fonts from jsDelivr) load from the web; uploaded fonts and `.plt` export work fully offline.*
+*Built for JZac Designs. The tracing engine (potrace) and font engine (opentype.js) are bundled into the page, so tracing, point-editing, and cutting all work fully offline. Only the optional Google-font downloads need the web; your built-in fonts, uploaded fonts, and `.plt` export work offline.*
