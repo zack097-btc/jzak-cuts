@@ -64,7 +64,7 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ## What it does (v10)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (**JZAK Trace**, our own engine — true Bézier curves, sub-pixel accurate, offline) · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **weld / subtract / overlap / exclude** shape algebra · **offset contour cuts** (sticker borders and inline shrinks, round · sharp · clipped corners) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (**JZAK Trace**, our own engine — true Bézier curves, sub-pixel accurate, offline) · **color trace** — colored artwork separates into one layer per vinyl color automatically, every layer in perfect registration · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **weld / subtract / overlap / exclude** shape algebra · **offset contour cuts** (sticker borders and inline shrinks, round · sharp · clipped corners) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
 
 ### The tracing engine (JZAK Trace)
 
@@ -73,6 +73,19 @@ The tracer is ours, written from scratch for this app — no third-party tracing
 Measured against shapes whose exact geometry is known — circles, rounded rectangles, pentagons, rings, thin strokes, diagonals — it lands **inside a fifth of a pixel** on clean anti-aliased art where a black-and-white tracer is stuck at half a pixel, and it holds corners to **0.20 px** against potrace's 1.04 px. On rendered lettering it sits about **30 % closer to the true outline** than potrace at a comparable node count.
 
 It also knows when the picture cannot tell it any more. A hard-edged, un-anti-aliased image only knows its own edge to about a third of a pixel, so on those the curve is deliberately not chased tighter than that — chasing a staircase only buries the shape in nodes you then have to edit.
+
+**Color trace.** A single threshold flattens a three-color badge into one
+silhouette. So colored art is traced the way it will be cut: the engine works
+out the few flat colors the design is really made of (learning them only from
+clean pixels, never from the blended pixels along edges, so no phantom "blend
+colors" appear), gives every color its own region, and runs each region through
+the same sub-pixel engine. Each color arrives as its own object — same size,
+same position, in perfect registration — so you cut each layer on its vinyl and
+stack them. The backing color never becomes a layer: letter counters and the
+gaps inside a badge stay holes, which is how a shop actually weeds them. Auto
+mode picks color layers for colored art and the single-color trace for
+black-and-white art; the Colors picker forces an exact layer count when you
+want to simplify a busy image.
 
 **Smooth slider:** 0 follows every last detail, 8 is glass-smooth. **3 is the default and is right for most artwork.** Raise it for scanned or noisy art, lower it for crisp high-resolution logos.
 
