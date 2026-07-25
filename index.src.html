@@ -199,14 +199,32 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <label>Any file — vector, image, or Silhouette</label>
       <input type="file" id="vecFile" accept=".svg,.dxf,.png,.jpg,.jpeg,.gif,.bmp,.webp,.studio,.studio3">
       <div id="traceCtl" style="display:none">
-        <label>Trace threshold <span id="thV"></span></label>
-        <div class="rng"><input type="range" id="thresh" min="1" max="254" value="128"><span class="val" id="thOut">128</span></div>
+        <label>Trace mode</label>
+        <select id="traceMode">
+          <option value="auto">Auto (best for the art)</option>
+          <option value="color">Color layers — one per vinyl color</option>
+          <option value="bw">Single color (black &amp; white)</option>
+        </select>
+        <div id="traceColorRows">
+          <label>Colors</label>
+          <select id="traceColors">
+            <option value="0">Auto</option>
+            <option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5">5</option>
+            <option value="6">6</option><option value="7">7</option>
+            <option value="8">8</option>
+          </select>
+        </div>
+        <div id="traceBWRows">
+          <label>Trace threshold <span id="thV"></span></label>
+          <div class="rng"><input type="range" id="thresh" min="1" max="254" value="128"><span class="val" id="thOut">128</span></div>
+          <div class="chk"><input type="checkbox" id="traceInvert"><label for="traceInvert" style="margin:0">Invert (light shape on dark)</label></div>
+        </div>
         <label>Smoothing <span id="smV"></span></label>
         <div class="rng"><input type="range" id="smooth" min="0" max="8" value="3"><span class="val" id="smOut">3</span></div>
-        <div class="chk"><input type="checkbox" id="traceInvert"><label for="traceInvert" style="margin:0">Invert (light shape on dark)</label></div>
         <div class="btns"><button id="retraceBtn" class="blue" style="flex:1">Re-trace</button></div>
       </div>
-      <div class="hint">SVG/DXF as vectors. Images &amp; Silhouette <b>.studio3</b> are auto-traced. (.studio3 traces its embedded preview; PDF/AI: export to SVG/PNG first.)</div>
+      <div class="hint">SVG/DXF as vectors. Images &amp; Silhouette <b>.studio3</b> are auto-traced — colored art comes in as one layer per vinyl color, in registration. (.studio3 traces its embedded preview; PDF/AI: export to SVG/PNG first.)</div>
     </div>
 
     <!-- SELECT / properties panel -->
@@ -641,7 +659,7 @@ function flattenOpentype(path){const N=16,subs=[];let cur=[],start=null,px=0,py=
 function importSVG(file){const r=new FileReader();r.onload=()=>{try{const doc=new DOMParser().parseFromString(r.result,"image/svg+xml"),svg=doc.documentElement,holder=document.createElement("div");holder.style.cssText="position:absolute;left:-99999px;top:-99999px;width:2000px;height:2000px";holder.appendChild(svg);document.body.appendChild(holder);const subs=[];svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse").forEach(el=>{let t=0;try{t=el.getTotalLength();}catch(e){return;}if(!t||!isFinite(t))return;const step=Math.max(0.4,t/400),ctm=el.getCTM(),pts=[];for(let d=0;d<=t;d+=step){let p=el.getPointAtLength(d);if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;pts.push([p.x,p.y]);}if(pts.length>1)subs.push(pts);});let upi=96;const wA=svg.getAttribute("width")||"",vb=(svg.getAttribute("viewBox")||"").split(/[ ,]+/).map(Number),mm=wA.match(/([\d.]+)mm/),inm=wA.match(/([\d.]+)in/);if(vb.length===4&&(mm||inm)){const uW=vb[2],pin=mm?parseFloat(mm[1])/25.4:parseFloat(inm[1]);if(pin>0)upi=uW/pin;}document.body.removeChild(holder);if(!subs.length){alert("No cuttable paths found in that SVG.");return;}const scaled=subs.map(sp=>sp.map(([x,y])=>[x/upi,y/upi])),bb=bboxOf(scaled);addObject(scaled,file.name,bb.h);}catch(e){alert("SVG import failed: "+(e.message||e));}};r.readAsText(file);}
 function parseDXF(text){const rows=text.split(/\r\n|\r|\n/),pairs=[];for(let i=0;i+1<rows.length;i+=2)pairs.push([parseInt(rows[i].trim(),10),rows[i+1].trim()]);const ents=[];let cur=null;for(const [code,val] of pairs){if(isNaN(code))continue;if(code===0){if(cur)ents.push(cur);cur={type:val,c:{}};}else if(cur){(cur.c[code]=cur.c[code]||[]).push(val);}}if(cur)ents.push(cur);const n=v=>parseFloat(v),subs=[];let poly=null;for(const e of ents){const c=e.c;if(e.type==="LINE"&&c[10]&&c[11])subs.push([[n(c[10][0]),-n(c[20][0])],[n(c[11][0]),-n(c[21][0])]]);else if(e.type==="LWPOLYLINE"&&c[10]){const xs=c[10],ys=c[20]||[],p=[];for(let i=0;i<xs.length;i++)p.push([n(xs[i]),-n(ys[i]||0)]);if(c[70]&&(parseInt(c[70][0],10)&1)&&p.length)p.push(p[0].slice());if(p.length>1)subs.push(p);}else if(e.type==="CIRCLE"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]),p=[];for(let i=0;i<=64;i++){const a=i/64*2*Math.PI;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="ARC"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]);let a0=n(c[50][0]),a1=n(c[51][0]);if(a1<a0)a1+=360;const st=Math.max(8,Math.round((a1-a0)/5)),p=[];for(let i=0;i<=st;i++){const a=(a0+(a1-a0)*i/st)*Math.PI/180;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="POLYLINE")poly=[];else if(e.type==="VERTEX"&&poly&&c[10])poly.push([n(c[10][0]),-n(c[20][0])]);else if(e.type==="SEQEND"){if(poly&&poly.length>1)subs.push(poly);poly=null;}}return subs;}
 function importDXF(file){const r=new FileReader();r.onload=()=>{try{const subs=parseDXF(r.result);if(!subs.length){alert("No cuttable entities found in that DXF.");return;}const bb=bboxOf(subs);addObject(subs,file.name,bb.h);}catch(e){alert("DXF import failed: "+(e.message||e));}};r.readAsText(file);}
-let traceData=null,lastTraceId=null;
+let traceData=null,lastTraceId=null,lastTraceIds=null;
 function otsuThreshold(idata){const hist=new Array(256).fill(0),d=idata.data;for(let i=0;i<d.length;i+=4){hist[Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])]++;}const total=d.length/4;let sum=0;for(let t=0;t<256;t++)sum+=t*hist[t];let sumB=0,wB=0,max=0,thr=128;for(let t=0;t<256;t++){wB+=hist[t];if(!wB)continue;const wF=total-wB;if(!wF)break;sumB+=t*hist[t];const mB=sumB/wB,mF=(sum-sumB)/wF,between=wB*wF*(mB-mF)*(mB-mF);if(between>max){max=between;thr=t;}}return Math.min(253,Math.max(2,thr));}
 /* The picture is traced at the size it arrived. Blowing it up first was only
    ever a crutch for a black-and-white tracer: enlarging invents no detail, and
@@ -653,14 +671,54 @@ function loadImageForTrace(url){const img=new Image();img.onload=()=>{URL.revoke
   $("smV").textContent="("+$("smooth").value+")";$("smOut").textContent=$("smooth").value;
   const thr=otsuThreshold(traceData);$("thresh").value=thr;$("thOut").textContent=thr;$("thV").textContent="("+thr+")";
   let dk=0;const dd=traceData.data;for(let i=0;i<dd.length;i+=4){if(0.299*dd[i]+0.587*dd[i+1]+0.114*dd[i+2]<thr)dk++;}$("traceInvert").checked=(dk/(dd.length/4))>0.5;
-  $("traceCtl").style.display="";lastTraceId=null;traceRun(false);};img.onerror=()=>alert("Couldn't read that image.");img.src=url;}
+  $("traceCtl").style.display="";$("traceMode").value="auto";$("traceColors").value="0";traceModeUI();lastTraceId=null;lastTraceIds=null;traceRun(false);};img.onerror=()=>alert("Couldn't read that image.");img.src=url;}
 function extractLargestPNG(buf){const u=new Uint8Array(buf),sig=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a];let best=null;for(let i=0;i+8<u.length;i++){let m=true;for(let k=0;k<8;k++)if(u[i+k]!==sig[k]){m=false;break;}if(!m)continue;let end=-1;for(let j=i+8;j+8<=u.length;j++){if(u[j]===0x49&&u[j+1]===0x45&&u[j+2]===0x4e&&u[j+3]===0x44){end=j+8;break;}}if(end>0){if(!best||end-i>best.len)best={s:i,e:end,len:end-i};i=end;}}return best?u.slice(best.s,best.e):null;}
 function studioImport(f){const r=new FileReader();r.onload=()=>{const png=extractLargestPNG(r.result);if(!png){alert("Couldn't find an image inside that .studio3 (proprietary format). Export a PNG or SVG from Silhouette Studio and I'll cut that.");return;}loadImageForTrace(URL.createObjectURL(new Blob([png],{type:"image/png"})));};r.onerror=()=>alert("Couldn't read that file.");r.readAsArrayBuffer(f);}
 function onVecFile(f){const ext=(f.name.split(".").pop()||"").toLowerCase();if(ext==="dxf"){importDXF(f);return;}if(ext==="svg"){importSVG(f);return;}if(ext==="studio3"||ext==="studio"){studioImport(f);return;}if(["png","jpg","jpeg","gif","bmp","webp"].indexOf(ext)<0){alert("Unsupported file. Use SVG, DXF, an image, or a Silhouette .studio3.");return;}loadImageForTrace(URL.createObjectURL(f));}
 function isDark(fill){if(!fill)return false;const m=fill.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/i);let r,g,b;if(m){r=+m[1];g=+m[2];b=+m[3];}else if(fill[0]==="#"){const h=fill.slice(1);if(h.length===3){r=parseInt(h[0]+h[0],16);g=parseInt(h[1]+h[1],16);b=parseInt(h[2]+h[2],16);}else{r=parseInt(h.slice(0,2),16);g=parseInt(h.slice(2,4),16);b=parseInt(h.slice(4,6),16);}}else return false;return (0.299*r+0.587*g+0.114*b)<128;}
 function sampleGeom(el,out){let t=0;try{t=el.getTotalLength();}catch(e){return;}if(!t||!isFinite(t))return;const step=Math.max(0.3,t/1400),ctm=el.getCTM(),pts=[];for(let d=0;d<=t;d+=step){let p=el.getPointAtLength(d);if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;pts.push([p.x,p.y]);}if(pts.length>1)out.push(pts);}
 function svgStringToSubpaths(svgStr,darkOnly){const doc=new DOMParser().parseFromString(svgStr,"image/svg+xml"),svg=doc.documentElement,holder=document.createElement("div");holder.style.cssText="position:absolute;left:-99999px;top:-99999px";holder.appendChild(svg);document.body.appendChild(holder);const out=[],NS="http://www.w3.org/2000/svg";svg.querySelectorAll("path,polygon,polyline").forEach(el=>{if(darkOnly){const f=el.getAttribute("fill")||el.style.fill||"";if(!isDark(f))return;}if(el.tagName.toLowerCase()==="path"){const d=el.getAttribute("d")||"",segs=d.split(/(?=[Mm])/).filter(s=>s.trim());for(const seg of segs){const tp=document.createElementNS(NS,"path");tp.setAttribute("d",seg);el.parentNode.appendChild(tp);sampleGeom(tp,out);el.parentNode.removeChild(tp);}}else sampleGeom(el,out);});document.body.removeChild(holder);return out;}
-function traceRun(replace){if(!traceData)return;if(typeof JZTrace==="undefined"){alert("Tracing engine not loaded. SVG/DXF still work offline.");return;}const thr=parseInt($("thresh").value),inv=$("traceInvert").checked,sm=parseInt(($("smooth")||{}).value||"3");let res;try{res=JZTrace.trace(traceData,{threshold:thr,invert:inv,smooth:sm,turdsize:2,subpixel:true});}catch(e){alert("Trace failed: "+(e.message||e));return;}const dm=res&&res.d?res.d:"",nodes=dm?parsePathToNodes(dm):[],subs=nodes.length?nodesToSubpaths(nodes):[];if(!subs.length){alert("Nothing traced — adjust the threshold or Invert.");return;}if(replace&&lastTraceId!=null){const o=state.objects.find(x=>x.id===lastTraceId);if(o){histPush("retrace");o.subpaths=subs;o.nodes=nodes.length?nodes:null;o.bbox=bboxOf(subs);$("widthIn").value=objWidth(o).toFixed(2);renderObjList();draw();return;}}const o=addObject(subs,"traced image",3);o.nodes=nodes.length?nodes:null;lastTraceId=o.id;}
+/* a human name for a vinyl colour, so the object list reads like a cut plan */
+function vinylName(hex){const m=/^#([0-9a-f]{6})$/i.exec(hex||"");if(!m)return "color";
+  const v=parseInt(m[1],16),r=v>>16,g=(v>>8)&255,b=v&255,
+  names=[["black",17,17,17],["white",250,250,250],["gray",128,128,128],["silver",192,199,206],
+  ["red",214,40,40],["dark red",139,0,0],["orange",244,130,32],["yellow",250,197,49],
+  ["gold",212,175,55],["green",46,139,60],["dark green",18,66,44],["teal",0,128,128],
+  ["mint",80,200,160],["blue",30,86,160],["navy",18,34,64],["sky blue",120,180,230],
+  ["purple",120,60,160],["pink",236,110,170],["brown",121,85,61],["tan",210,180,140]];
+  let best=names[0],bd=1e9;for(const n of names){const d=(n[1]-r)**2+(n[2]-g)**2+(n[3]-b)**2;if(d<bd){bd=d;best=n;}}return best[0];}
+/* white vinyl on a white mat still needs a visible outline on screen */
+function dispColor(c){if(!c)return "#111";const m=/^#([0-9a-f]{6})$/i.exec(c);if(!m)return c;
+  const v=parseInt(m[1],16),r=v>>16,g=(v>>8)&255,b=v&255;
+  return (0.299*r+0.587*g+0.114*b)>232?"#b9c1cb":c;}
+function traceModeUI(){const m=$("traceMode").value;$("traceColorRows").style.display=(m==="bw")?"none":"";$("traceBWRows").style.display=(m==="bw")?"":"none";}
+/* Every layer of one trace shares the SAME bounding box — the whole picture —
+   and the same position and size, so the colors sit in perfect registration on
+   the mat: cut each color on its vinyl, stack them, and the art lines up. */
+function placeTraceLayers(layers,replace){const W=traceData.width,H=traceData.height,bb={minX:0,minY:0,w:W,h:H};
+  let posX=1,posY=1,hgt=3;
+  const old=(replace&&lastTraceIds&&lastTraceIds.length)?state.objects.filter(o=>lastTraceIds.includes(o.id)):[];
+  histPush(replace?"retrace":"trace");
+  if(old.length){const f=old[0];posX=f.posX;posY=f.posY;hgt=f.height;const rm=new Set(lastTraceIds);state.objects=state.objects.filter(o=>!rm.has(o.id));}
+  const ids=[];
+  for(const L of layers){const nodes=L.nodes||parsePathToNodes(L.d),subs=L.subs||(nodes.length?nodesToSubpaths(nodes):[]);if(!subs.length)continue;
+    const o={id:nextId++,subpaths:subs,bbox:bb,name:layers.length>1?(vinylName(L.color)+" layer"):"traced image",posX,posY,height:hgt,width:bb.w*(hgt/(bb.h||1)),rotation:0,mirror:false,color:L.color||"#111111"};
+    o.nodes=nodes.length?nodes:null;state.objects.push(o);ids.push(o.id);}
+  if(!ids.length){alert("Nothing traced — adjust the settings.");return;}
+  lastTraceIds=ids;lastTraceId=ids[0];state.selIds=ids.slice();state.selId=ids[0];
+  setTool("select");renderObjList();syncInputs();resetView();draw();}
+function traceRun(replace){if(!traceData)return;if(typeof JZTrace==="undefined"){alert("Tracing engine not loaded. SVG/DXF still work offline.");return;}
+  const mode=($("traceMode")||{}).value||"auto",sm=parseInt(($("smooth")||{}).value||"3");
+  if(mode!=="bw"){let cres;try{cres=JZTrace.traceColor(traceData,{colors:parseInt(($("traceColors")||{}).value||"0"),smooth:sm,turdsize:2,subpixel:true});}catch(e){alert("Trace failed: "+(e.message||e));return;}
+    const layers=(cres&&cres.layers?cres.layers:[]).filter(L=>L.d);
+    /* one-color art gains nothing from color mode — Auto falls through to the
+       threshold trace, which also handles light-on-dark via Invert */
+    if(layers.length>=2||(mode==="color"&&layers.length)){placeTraceLayers(layers,replace);return;}
+    if(mode==="color"){alert("Couldn't split that into color layers — try Single color mode.");return;}}
+  const thr=parseInt($("thresh").value),inv=$("traceInvert").checked;let res;
+  try{res=JZTrace.trace(traceData,{threshold:thr,invert:inv,smooth:sm,turdsize:2,subpixel:true});}catch(e){alert("Trace failed: "+(e.message||e));return;}
+  const dm=res&&res.d?res.d:"";if(!dm){alert("Nothing traced — adjust the threshold or Invert.");return;}
+  placeTraceLayers([{color:"#111111",d:dm}],replace);}
 
 /* ---- grid ---- */
 function makeGrid(){const o=selected();if(!o){alert("Select an object first.");return;}histPush();const n=Math.max(1,parseInt($("copyN").value||"1")),gap=parseFloat($("copyGap").value||"0.5"),matW=parseFloat($("matWidth").value||"24"),w=objWidth(o),h=o.height,perCol=Math.max(1,Math.floor((matW+gap)/(h+gap))),sX=o.posX,sY=o.posY,newIds=[];state.objects=state.objects.filter(x=>x.id!==o.id);for(let i=0;i<n;i++){const col=Math.floor(i/perCol),row=i%perCol,c=JSON.parse(JSON.stringify(o));c.id=nextId++;c.posX=sX+col*(w+gap);c.posY=sY+row*(h+gap);c.name=o.name+" #"+(i+1);state.objects.push(c);newIds.push(c.id);}resetView();setSel(newIds);}
@@ -684,7 +742,7 @@ function draw(){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+M
   ctx.strokeStyle="rgba(0,0,0,.06)";for(let i=0;i<=viewLen;i++){const gx=ox+i*ppi;ctx.beginPath();ctx.moveTo(gx,oy);ctx.lineTo(gx,oy+mh);ctx.stroke();}for(let j=0;j<=matW;j++){const gy=oy+j*ppi;ctx.beginPath();ctx.moveTo(ox,gy);ctx.lineTo(ox+mw,gy);ctx.stroke();}
   if($("weed").checked&&state.objects.length){const m=0.25;ctx.strokeStyle="rgba(30,111,224,.55)";ctx.setLineDash([5,4]);ctx.strokeRect(ox+(bb.minX-m)*ppi,oy+(bb.minY-m)*ppi,(bb.w+2*m)*ppi,(bb.h+2*m)*ppi);ctx.setLineDash([]);}
   if($("regMarks").checked&&state.objects.length){ctx.strokeStyle="#d98a00";ctx.lineWidth=1.6;for(const seg of regMarkLines(bb)){ctx.beginPath();seg.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}}
-  for(const o of state.objects){const sel=isSel(o.id),prim=sel&&!multiSel();ctx.strokeStyle=o.color||"#111";ctx.lineWidth=sel?1.7:1.2;for(const line of objPolylines(o)){ctx.beginPath();line.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}if(sel&&!prim)drawSelDash(o,P);if(prim){
+  for(const o of state.objects){const sel=isSel(o.id),prim=sel&&!multiSel();ctx.strokeStyle=dispColor(o.color);ctx.lineWidth=sel?1.7:1.2;for(const line of objPolylines(o)){ctx.beginPath();line.forEach(([x,y],i)=>{const[px,py]=P(x,y);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.stroke();}if(sel&&!prim)drawSelDash(o,P);if(prim){
     const b=objBox(o),C=b.corners,E=b.edges,rh=objRotHandle(o,ppi);
     ctx.strokeStyle="#1e6fe0";ctx.lineWidth=1;ctx.setLineDash([4,3]);
     ctx.beginPath();[C[0],C[1],C[3],C[2]].forEach((pt,i)=>{const[px,py]=P(pt[0],pt[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.closePath();ctx.stroke();
@@ -1052,6 +1110,8 @@ $("fontFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
 $("vecFile").onchange=e=>{const f=e.target.files[0];if(f)onVecFile(f);};
 $("thresh").oninput=()=>{$("thOut").textContent=$("thresh").value;$("thV").textContent="("+$("thresh").value+")";};
 $("thresh").onchange=()=>traceRun(true);
+$("traceMode").onchange=()=>{traceModeUI();traceRun(true);};
+$("traceColors").onchange=()=>traceRun(true);
 $("smooth").oninput=()=>{$("smOut").textContent=$("smooth").value;$("smV").textContent="("+$("smooth").value+")";};
 $("smooth").onchange=()=>traceRun(true);
 $("retraceBtn").onclick=()=>traceRun(true);$("traceInvert").onchange=()=>traceRun(true);
