@@ -692,31 +692,16 @@ var JZTrace = (function () {
     RUN_R      = opts._runR      != null ? opts._runR      : 2;
   }
 
-  function trace(img, opts) {
-    opts = opts || {};
-    var thr = opts.threshold == null ? 128 : opts.threshold,
-        inv = !!opts.invert,
-        sm = opts.smooth == null ? 3 : opts.smooth,
-        turd = opts.turdsize == null ? 2 : opts.turdsize,
-        subpix = opts.subpixel !== false,
-        w = img.width, h = img.height;
-    setTuning(opts, sm);
-
-    var mask = buildMask(img, thr, inv),
-        loops = contours(mask, turd);
-    if (!loops.length) return { d: "", count: 0, width: w, height: h };
-
-    /* smooth 0..8 -> how sharp a turn has to be before it counts as a corner,
-       how hard the zig-zag of the pixel grid is pressed out, and how tightly
-       the curve has to hug the points */
+  /* The whole journey from one mask to finished curves. gray is anything with
+     .g (the field the sub-pixel snap reads, "more = more shape") and .md (the
+     pixels of that field that sit between pure inside and pure outside). */
+  function tracePipeline(mask, gray, w, h, sm, turd, subpix) {
     var angLimit = (26 + sm * 6) * Math.PI / 180,     /* 26deg .. 74deg */
         sigma = 0.75 + sm * 0.22,                     /* pixels          */
-        tol = 0.05 + sm * 0.05;                       /* pixels          */
-
-    var gray = buildGray(img, inv), g = gray.g, i, k, edgePts = 0, softAll = 0;
+        tol = 0.05 + sm * 0.05,                       /* pixels          */
+        loops = contours(mask, turd), g = gray.g,
+        i, k, edgePts = 0, softAll = 0, d = "", count = 0;
     for (i = 0; i < loops.length; i++) edgePts += loops[i].pts.length;
-
-    var d = "", count = 0;
     for (i = 0; i < loops.length; i++) {
       var raw = loops[i].pts, nn = raw.length,
           soft = softness(raw, gray.md, w, h),
@@ -740,8 +725,416 @@ var JZTrace = (function () {
       var seg = loopToPath(pts, tols, angLimit);
       if (seg) { d += seg; count++; }
     }
-    return { d: d, count: count, width: w, height: h,
-             antialiased: edgePts ? (softAll / edgePts) > 0.35 : true };
+    return { d: d, count: count, edgePts: edgePts, softAll: softAll };
+  }
+
+  function trace(img, opts) {
+    opts = opts || {};
+    var thr = opts.threshold == null ? 128 : opts.threshold,
+        inv = !!opts.invert,
+        sm = opts.smooth == null ? 3 : opts.smooth,
+        turd = opts.turdsize == null ? 2 : opts.turdsize,
+        subpix = opts.subpixel !== false,
+        w = img.width, h = img.height;
+    setTuning(opts, sm);
+
+    var mask = buildMask(img, thr, inv);
+    var gray = buildGray(img, inv);
+    var r = tracePipeline(mask, gray, w, h, sm, turd, subpix);
+    return { d: r.d, count: r.count, width: w, height: h,
+             antialiased: r.edgePts ? (r.softAll / r.edgePts) > 0.35 : true };
+  }
+
+  /* ---------------------------------------------------------- colour trace --
+     A single threshold flattens a three-colour badge into one silhouette — a
+     potato. Real artwork is cut colour by colour, so it must be TRACED colour
+     by colour: find the few flat colours the design is actually made of, give
+     every colour its own region, and run each region through the very same
+     sub-pixel engine as the black-and-white path. One layer per vinyl colour,
+     all in perfect registration. */
+
+  /* composite onto white once; quantisation and fields both read this */
+  function flattenRGB(img) {
+    var d = img.data, n = img.width * img.height,
+        rgb = new Uint8Array(n * 3), i, p;
+    for (i = 0, p = 0; i < n; i++, p += 4) {
+      var a = d[p + 3] / 255, ia = 255 * (1 - a);
+      rgb[i * 3]     = d[p] * a + ia;
+      rgb[i * 3 + 1] = d[p + 1] * a + ia;
+      rgb[i * 3 + 2] = d[p + 2] * a + ia;
+    }
+    return rgb;
+  }
+
+  /* median cut: split the box with the widest channel at its median until
+     there are enough boxes, then every box's average is a starting colour */
+  function medianCut(samples, want) {
+    var boxes = [samples], i;
+    while (boxes.length < want) {
+      var bi = -1, br = -1;
+      for (i = 0; i < boxes.length; i++) {
+        var bx = boxes[i];
+        if (bx.length < 2) continue;
+        var mn = [255, 255, 255], mx = [0, 0, 0], j, c;
+        for (j = 0; j < bx.length; j++) for (c = 0; c < 3; c++) {
+          var v = bx[j][c];
+          if (v < mn[c]) mn[c] = v;
+          if (v > mx[c]) mx[c] = v;
+        }
+        var r = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]);
+        if (r > br) { br = r; bi = i; }
+      }
+      if (bi < 0 || br < 8) break;              /* nothing left worth splitting */
+      var box = boxes[bi], ch = 0, mn2 = [255,255,255], mx2 = [0,0,0], j2, c2;
+      for (j2 = 0; j2 < box.length; j2++) for (c2 = 0; c2 < 3; c2++) {
+        var v2 = box[j2][c2];
+        if (v2 < mn2[c2]) mn2[c2] = v2;
+        if (v2 > mx2[c2]) mx2[c2] = v2;
+      }
+      if (mx2[1] - mn2[1] >= mx2[0] - mn2[0] && mx2[1] - mn2[1] >= mx2[2] - mn2[2]) ch = 1;
+      else if (mx2[2] - mn2[2] > mx2[0] - mn2[0] && mx2[2] - mn2[2] > mx2[1] - mn2[1]) ch = 2;
+      box.sort(function (a, b) { return a[ch] - b[ch]; });
+      var half = box.length >> 1;
+      boxes.splice(bi, 1, box.slice(0, half), box.slice(half));
+    }
+    var cents = [];
+    for (i = 0; i < boxes.length; i++) {
+      var bx2 = boxes[i];
+      if (!bx2.length) continue;
+      var s = [0, 0, 0], k;
+      for (k = 0; k < bx2.length; k++) { s[0] += bx2[k][0]; s[1] += bx2[k][1]; s[2] += bx2[k][2]; }
+      cents.push([s[0] / bx2.length, s[1] / bx2.length, s[2] / bx2.length]);
+    }
+    return cents;
+  }
+
+  function d2(a, r, g2, b2) {
+    var x = a[0] - r, y = a[1] - g2, z = a[2] - b2;
+    return x * x + y * y + z * z;
+  }
+
+  /* Pixels sitting on a colour-to-colour boundary are a MIX of two inks, not
+     an ink — let them vote and the palette grows a phantom "blend colour"
+     that traces as a ratty sliver ring round every real shape. So the palette
+     is learned only from pixels whose little neighbourhood is all one colour. */
+  function uniformMask(rgb, w, h) {
+    var u = new Uint8Array(w * h), x, y;
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var i = y * w + x, ok = 1, c;
+        if (x + 1 < w) {
+          for (c = 0; c < 3; c++)
+            if (Math.abs(rgb[i * 3 + c] - rgb[(i + 1) * 3 + c]) > 12) { ok = 0; break; }
+        }
+        if (ok && y + 1 < h) {
+          for (c = 0; c < 3; c++)
+            if (Math.abs(rgb[i * 3 + c] - rgb[(i + w) * 3 + c]) > 12) { ok = 0; break; }
+        }
+        u[i] = ok;
+      }
+    }
+    return u;
+  }
+
+  /* The palette the artwork is really made of. Median cut finds the broad
+     families, a few rounds of averaging settle them onto the true inks, then
+     near-twins merge and colours too rare to be real go to their neighbours.
+     A small ink the averaging swallowed — navy text on a blue badge — is
+     hunted afterwards: any real mass of pixels far from EVERY palette colour
+     is an ink that was missed, and it gets its own entry.
+     forceK > 0 pins the final count for the user; 0 lets the art decide. */
+  function buildPalette(rgb, n, forceK, unif) {
+    var step = Math.max(1, Math.floor(n / 60000)), samples = [], i;
+    for (i = 0; i < n; i += step)
+      if (!unif || unif[i])
+        samples.push([rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]]);
+    if (samples.length < 64)                    /* art with no flat ground at all */
+      for (i = 0; i < n; i += step)
+        samples.push([rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]]);
+    var cents = medianCut(samples, forceK > 0 ? Math.max(forceK, 8) : 10), it;
+    for (it = 0; it < 6; it++) {                       /* k-means refinement */
+      var acc = [], cnt = [], k;
+      for (k = 0; k < cents.length; k++) { acc.push([0, 0, 0]); cnt.push(0); }
+      for (i = 0; i < samples.length; i++) {
+        var s = samples[i], best = 0, bd = Infinity;
+        for (k = 0; k < cents.length; k++) {
+          var dd = d2(cents[k], s[0], s[1], s[2]);
+          if (dd < bd) { bd = dd; best = k; }
+        }
+        acc[best][0] += s[0]; acc[best][1] += s[1]; acc[best][2] += s[2]; cnt[best]++;
+      }
+      for (k = 0; k < cents.length; k++) if (cnt[k])
+        cents[k] = [acc[k][0] / cnt[k], acc[k][1] / cnt[k], acc[k][2] / cnt[k]];
+    }
+    /* merge colours closer than the eye separates inks; drop the too-rare */
+    var MERGE = 26 * 26, changed = true;
+    while (changed && cents.length > 2) {
+      changed = false;
+      var pa = -1, pb = -1, pd = forceK > 0 ? Infinity : MERGE;
+      for (i = 0; i < cents.length; i++)
+        for (var j = i + 1; j < cents.length; j++) {
+          var dd2 = d2(cents[i], cents[j][0], cents[j][1], cents[j][2]);
+          if (dd2 < pd) { pd = dd2; pa = i; pb = j; }
+        }
+      var tooMany = forceK > 0 && cents.length > forceK;
+      if (pa >= 0 && (pd < MERGE || tooMany)) {
+        cents[pa] = [(cents[pa][0] + cents[pb][0]) / 2,
+                     (cents[pa][1] + cents[pb][1]) / 2,
+                     (cents[pa][2] + cents[pb][2]) / 2];
+        cents.splice(pb, 1);
+        changed = true;
+      }
+    }
+    /* population check on the full image: a "colour" holding almost nothing is
+       quantisation noise, not an ink — fold it into its nearest neighbour */
+    var keep = true;
+    while (keep && cents.length > 2) {
+      keep = false;
+      var pop = new Float64Array(cents.length), stepP = Math.max(1, Math.floor(n / 200000));
+      for (i = 0; i < n; i += stepP) {
+        var r0 = rgb[i * 3], g0 = rgb[i * 3 + 1], b0 = rgb[i * 3 + 2], bk = 0, bdd = Infinity;
+        for (var k2 = 0; k2 < cents.length; k2++) {
+          var q = d2(cents[k2], r0, g0, b0);
+          if (q < bdd) { bdd = q; bk = k2; }
+        }
+        pop[bk]++;
+      }
+      var tot = 0, mnI = 0;
+      for (i = 0; i < cents.length; i++) tot += pop[i];
+      for (i = 1; i < cents.length; i++) if (pop[i] < pop[mnI]) mnI = i;
+      if (forceK === 0 && pop[mnI] / tot < 0.004) { cents.splice(mnI, 1); keep = true; }
+    }
+    /* hunt for a missed ink: pixels far from every colour we kept */
+    var guard = 0;
+    while (forceK === 0 && cents.length < 12 && guard++ < 6) {
+      var far = [], FD = 45 * 45;
+      for (i = 0; i < samples.length; i++) {
+        var sp = samples[i], bd2 = Infinity, kk;
+        for (kk = 0; kk < cents.length; kk++) {
+          var q3 = d2(cents[kk], sp[0], sp[1], sp[2]);
+          if (q3 < bd2) bd2 = q3;
+        }
+        if (bd2 > FD) far.push(sp);
+      }
+      if (far.length / samples.length < 0.003) break;
+      /* seed on the farthest crowd: the far sample most surrounded by others */
+      var seed = far[0], bestN = -1;
+      for (i = 0; i < far.length; i += Math.max(1, far.length >> 9)) {
+        var cnt2 = 0, j3;
+        for (j3 = 0; j3 < far.length; j3 += Math.max(1, far.length >> 9))
+          if (d2(far[i], far[j3][0], far[j3][1], far[j3][2]) < 30 * 30) cnt2++;
+        if (cnt2 > bestN) { bestN = cnt2; seed = far[i]; }
+      }
+      var acc2 = [0, 0, 0], m2 = 0;
+      for (i = 0; i < far.length; i++)
+        if (d2(seed, far[i][0], far[i][1], far[i][2]) < 40 * 40) {
+          acc2[0] += far[i][0]; acc2[1] += far[i][1]; acc2[2] += far[i][2]; m2++;
+        }
+      if (!m2) break;
+      cents.push([acc2[0] / m2, acc2[1] / m2, acc2[2] / m2]);
+    }
+    return cents;
+  }
+
+  /* Absorb every little island of one colour sitting inside another — the
+     specks a gradient or a photo leaves behind after quantisation. Anything
+     smaller than minPx joins whatever colour surrounds it most. */
+  function despeckleLabels(lab, w, h, minPx) {
+    var n = w * h, comp = new Int32Array(n), sizes = [], stack = new Int32Array(n),
+        i, cid = 0;
+    for (i = 0; i < n; i++) comp[i] = -1;
+    for (i = 0; i < n; i++) {
+      if (comp[i] >= 0) continue;
+      var top = 0, sz = 0, L = lab[i];
+      stack[top++] = i; comp[i] = cid;
+      while (top) {
+        var j = stack[--top]; sz++;
+        var x = j % w, y = (j - x) / w;
+        if (x > 0     && comp[j - 1] < 0 && lab[j - 1] === L) { comp[j - 1] = cid; stack[top++] = j - 1; }
+        if (x < w - 1 && comp[j + 1] < 0 && lab[j + 1] === L) { comp[j + 1] = cid; stack[top++] = j + 1; }
+        if (y > 0     && comp[j - w] < 0 && lab[j - w] === L) { comp[j - w] = cid; stack[top++] = j - w; }
+        if (y < h - 1 && comp[j + w] < 0 && lab[j + w] === L) { comp[j + w] = cid; stack[top++] = j + w; }
+      }
+      sizes.push(sz); cid++;
+    }
+    /* small components take the label of their most common neighbour */
+    var vote = {}, x2, y2;
+    for (i = 0; i < n; i++) {
+      var c2 = comp[i];
+      if (sizes[c2] >= minPx) continue;
+      x2 = i % w; y2 = (i - x2) / w;
+      var nb = [];
+      if (x2 > 0) nb.push(i - 1);
+      if (x2 < w - 1) nb.push(i + 1);
+      if (y2 > 0) nb.push(i - w);
+      if (y2 < h - 1) nb.push(i + w);
+      for (var q = 0; q < nb.length; q++) {
+        var jj = nb[q];
+        if (comp[jj] === c2 || sizes[comp[jj]] < minPx) continue;
+        var key = c2 * 16 + lab[jj];
+        vote[key] = (vote[key] || 0) + 1;
+      }
+    }
+    var bestFor = {};
+    for (var vk in vote) {
+      var c3 = (vk / 16) | 0, L2 = vk % 16;
+      if (!(c3 in bestFor) || vote[vk] > vote[c3 * 16 + bestFor[c3]]) bestFor[c3] = L2;
+    }
+    for (i = 0; i < n; i++) {
+      var c4 = comp[i];
+      if (sizes[c4] < minPx && (c4 in bestFor)) lab[i] = bestFor[c4];
+    }
+  }
+
+  /* one label per pixel, plus how sure the pixel is: a blend pixel on an
+     anti-aliased boundary is between inks, not an ink, so any pixel that is
+     torn between two colours OR sits on a sharp colour change lets its sure
+     neighbours outvote it. */
+  function labelPixels(rgb, w, h, cents, unif) {
+    var n = w * h, lab = new Uint8Array(n), weak = new Uint8Array(n),
+        K = cents.length, i, k;
+    for (i = 0; i < n; i++) {
+      var r = rgb[i * 3], g = rgb[i * 3 + 1], b = rgb[i * 3 + 2],
+          b1 = Infinity, b2v = Infinity, bk = 0;
+      for (k = 0; k < K; k++) {
+        var dd = d2(cents[k], r, g, b);
+        if (dd < b1) { b2v = b1; b1 = dd; bk = k; }
+        else if (dd < b2v) b2v = dd;
+      }
+      lab[i] = bk;
+      /* torn between two inks — but only pixels on a colour change get voted
+         out, so a whole thin stroke can never be eaten by its background */
+      weak[i] = ((Math.sqrt(b2v) - Math.sqrt(b1)) < 16 && (!unif || !unif[i])) ? 1 : 0;
+    }
+    /* two voting passes settle every sliver without moving real edges */
+    for (var pass = 0; pass < 2; pass++) {
+      var src = lab.slice();
+      for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+        i = y * w + x;
+        if (!weak[i]) continue;
+        var votes = {}, bestk = -1, bestc = 0, dy, dx;
+        for (dy = -1; dy <= 1; dy++) for (dx = -1; dx <= 1; dx++) {
+          var xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          var j = yy * w + xx;
+          if (weak[j]) continue;
+          var L = src[j], c = (votes[L] || 0) + 1;
+          votes[L] = c;
+          if (c > bestc) { bestc = c; bestk = L; }
+        }
+        if (bestk >= 0) { lab[i] = bestk; weak[i] = 0; }
+      }
+    }
+    return lab;
+  }
+
+  /* the backing sheet is whichever colour owns the border, and only the part
+     of it CONNECTED to the border — white text inside a red disc stays */
+  function floodBackground(lab, w, h, bgk) {
+    var gone = new Uint8Array(w * h), stack = [], x, y, i;
+    for (x = 0; x < w; x++) {
+      if (lab[x] === bgk) stack.push(x);
+      i = (h - 1) * w + x;
+      if (lab[i] === bgk) stack.push(i);
+    }
+    for (y = 0; y < h; y++) {
+      i = y * w;
+      if (lab[i] === bgk) stack.push(i);
+      i = y * w + w - 1;
+      if (lab[i] === bgk) stack.push(i);
+    }
+    while (stack.length) {
+      i = stack.pop();
+      if (gone[i]) continue;
+      gone[i] = 1;
+      x = i % w; y = (i - x) / w;
+      if (x > 0     && !gone[i - 1] && lab[i - 1] === bgk) stack.push(i - 1);
+      if (x < w - 1 && !gone[i + 1] && lab[i + 1] === bgk) stack.push(i + 1);
+      if (y > 0     && !gone[i - w] && lab[i - w] === bgk) stack.push(i - w);
+      if (y < h - 1 && !gone[i + w] && lab[i + w] === bgk) stack.push(i + w);
+    }
+    return gone;
+  }
+
+  function hex2(v) { var s = Math.round(v).toString(16); return s.length < 2 ? "0" + s : s; }
+
+  /* opts:
+       colors    0 for "let the art decide", else 2..12 exact
+       smooth    0..8, same meaning as trace()
+       turdsize  px, same meaning
+       subpixel  bool, same meaning (default on)
+       keepBackground  bool — trace the backing colour too (default off)
+  */
+  function traceColor(img, opts) {
+    opts = opts || {};
+    var sm = opts.smooth == null ? 3 : opts.smooth,
+        turd = opts.turdsize == null ? 2 : opts.turdsize,
+        subpix = opts.subpixel !== false,
+        forceK = opts.colors ? Math.max(2, Math.min(12, opts.colors)) : 0,
+        w = img.width, h = img.height, n = w * h;
+    setTuning(opts, sm);
+
+    /* a speck is a speck relative to the artwork, not to one pixel: at print
+       resolution the same dust mote covers far more pixels */
+    turd = Math.max(turd, Math.round(n / 400000));
+    var rgb = flattenRGB(img),
+        unif = uniformMask(rgb, w, h),
+        cents = buildPalette(rgb, n, forceK, unif),
+        lab = labelPixels(rgb, w, h, cents, unif),
+        K = cents.length, i, k;
+    despeckleLabels(lab, w, h, Math.max(8, turd * 4));
+
+    /* who owns the border? that colour's border-connected region is backing */
+    var bc = new Float64Array(K), x, y;
+    for (x = 0; x < w; x++) { bc[lab[x]]++; bc[lab[(h - 1) * w + x]]++; }
+    for (y = 0; y < h; y++) { bc[lab[y * w]]++; bc[lab[y * w + w - 1]]++; }
+    var bgk = 0;
+    for (k = 1; k < K; k++) if (bc[k] > bc[bgk]) bgk = k;
+    var gone = opts.keepBackground ? null : floodBackground(lab, w, h, bgk);
+
+    /* trace every colour through the one true pipeline. The sub-pixel field
+       for colour k is the margin between "nearest ink" and "this ink": it
+       ramps smoothly across an anti-aliased boundary exactly where the eye
+       puts the edge, so the snap works between inks just as it does between
+       black and white. */
+    var field = new Float32Array(n), md = new Uint8Array(n),
+        mArr = new Uint8Array(n), layers = [], pxCount = new Float64Array(K);
+    for (i = 0; i < n; i++) if (!gone || !gone[i]) pxCount[lab[i]]++;
+
+    for (k = 0; k < K; k++) {
+      /* The backing colour never gets a layer of its own when the backing is
+         being removed: every enclosed patch of it — letter counters, the gaps
+         inside a badge — is already a HOLE in the colour that surrounds it,
+         and that is how a shop cuts it: weed the hole, let the backing show. */
+      if (gone && k === bgk) continue;
+      if (!pxCount[k] || pxCount[k] < Math.max(4, turd)) continue;
+      var T = 48;                      /* blend distance treated as full ramp */
+      for (i = 0; i < n; i++) {
+        var r0 = rgb[i * 3], g0 = rgb[i * 3 + 1], b0 = rgb[i * 3 + 2],
+            dk = Math.sqrt(d2(cents[k], r0, g0, b0)), dn = Infinity, k2;
+        for (k2 = 0; k2 < K; k2++) {
+          if (k2 === k) continue;
+          var q2 = d2(cents[k2], r0, g0, b0);
+          if (q2 < dn) dn = q2;
+        }
+        dn = Math.sqrt(dn);
+        var v = 127.5 + (dn - dk) * (127.5 / T);
+        if (v < 0) v = 0; if (v > 255) v = 255;
+        if (gone && gone[i]) v = 0;              /* backing is never shape */
+        field[i] = v;
+        md[i] = (v > 30 && v < 225) ? 1 : 0;
+        mArr[i] = (lab[i] === k && (!gone || !gone[i])) ? 1 : 0;
+      }
+      var res = tracePipeline({ w: w, h: h, m: mArr }, { g: field, md: md },
+                              w, h, sm, turd, subpix);
+      if (!res.d) continue;
+      layers.push({ color: "#" + hex2(cents[k][0]) + hex2(cents[k][1]) + hex2(cents[k][2]),
+                    d: res.d, count: res.count, px: pxCount[k],
+                    background: k === bgk });
+    }
+    layers.sort(function (a, b) { return b.px - a.px; });
+    return { layers: layers, width: w, height: h,
+             palette: layers.map(function (L) { return L.color; }) };
   }
 
   /* The outline as plain points, before any curve fitting — used by the test
@@ -768,5 +1161,5 @@ var JZTrace = (function () {
     return out;
   }
 
-  return { trace: trace, outlinePoints: outlinePoints, version: "1.0" };
+  return { trace: trace, traceColor: traceColor, outlinePoints: outlinePoints, version: "1.1" };
 })();
