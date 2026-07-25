@@ -1,6 +1,6 @@
 [package]
 name = "jzak-cuts"
-version = "10.0.0"
+version = "10.1.0"
 description = "JZAK Cuts — vinyl cutting studio"
 authors = ["JZac Designs"]
 edition = "2021"
