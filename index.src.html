@@ -224,7 +224,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
         <div class="rng"><input type="range" id="smooth" min="0" max="8" value="3"><span class="val" id="smOut">3</span></div>
         <div class="btns"><button id="retraceBtn" class="blue" style="flex:1">Re-trace</button></div>
       </div>
-      <div class="hint">SVG/DXF as vectors. Images &amp; Silhouette <b>.studio3</b> are auto-traced — colored art comes in as one layer per vinyl color, in registration. (.studio3 traces its embedded preview; PDF/AI: export to SVG/PNG first.)</div>
+      <div class="hint">SVG/DXF as vectors. Silhouette <b>.studio3</b> imports its real cut lines as exact vectors — no tracing. Images are auto-traced — colored art comes in as one layer per vinyl color, in registration. (PDF/AI: export to SVG/PNG first.)</div>
     </div>
 
     <!-- SELECT / properties panel -->
@@ -673,7 +673,93 @@ function loadImageForTrace(url){const img=new Image();img.onload=()=>{URL.revoke
   let dk=0;const dd=traceData.data;for(let i=0;i<dd.length;i+=4){if(0.299*dd[i]+0.587*dd[i+1]+0.114*dd[i+2]<thr)dk++;}$("traceInvert").checked=(dk/(dd.length/4))>0.5;
   $("traceCtl").style.display="";$("traceMode").value="auto";$("traceColors").value="0";traceModeUI();lastTraceId=null;lastTraceIds=null;traceRun(false);};img.onerror=()=>alert("Couldn't read that image.");img.src=url;}
 function extractLargestPNG(buf){const u=new Uint8Array(buf),sig=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a];let best=null;for(let i=0;i+8<u.length;i++){let m=true;for(let k=0;k<8;k++)if(u[i+k]!==sig[k]){m=false;break;}if(!m)continue;let end=-1;for(let j=i+8;j+8<=u.length;j++){if(u[j]===0x49&&u[j+1]===0x45&&u[j+2]===0x4e&&u[j+3]===0x44){end=j+8;break;}}if(end>0){if(!best||end-i>best.len)best={s:i,e:end,len:end-i};i=end;}}return best?u.slice(best.s,best.e):null;}
-function studioImport(f){const r=new FileReader();r.onload=()=>{const png=extractLargestPNG(r.result);if(!png){alert("Couldn't find an image inside that .studio3 (proprietary format). Export a PNG or SVG from Silhouette Studio and I'll cut that.");return;}loadImageForTrace(URL.createObjectURL(new Blob([png],{type:"image/png"})));};r.onerror=()=>alert("Couldn't read that file.");r.readAsArrayBuffer(f);}
+/* Read the CUT GEOMETRY straight out of a .studio3 — the exact anchor points
+   and Bezier handles Silhouette saved, in millimetres. No tracing, so the
+   result is perfect: what Silhouette would have cut, this cuts.
+   The format is undocumented; what is decoded here was worked out from real
+   files: paths are stored as [int32 pointCount] then per point
+   [float32 x,y][flag byte, 1 = a relative in-handle follows][flag byte,
+   1 = a relative out-handle follows]. Anything that doesn't parse that way
+   is skipped, and if no geometry parses at all we fall back to tracing the
+   embedded preview picture like before. */
+function studioVectors(buf){
+  const dv=new DataView(buf), n=buf.byteLength;
+  const f32=o=>dv.getFloat32(o,true), i32=o=>dv.getInt32(o,true), u8=o=>dv.getUint8(o);
+  const absok=(x,y)=>x>-500&&x<3000&&y>-500&&y<3000&&x===x&&y===y;
+  const relok=(x,y)=>x>-500&&x<500&&y>-500&&y<500&&x===x&&y===y;
+  function readPt(o){
+    if(o+8>n)return null;
+    const x=f32(o),y=f32(o+4);
+    if(!absok(x,y))return null;
+    o+=8;const hs=[];
+    for(let k=0;k<2;k++){
+      if(o>=n)return null;
+      const fl=u8(o);
+      if(fl===1){if(o+9>n)return null;const rx=f32(o+1),ry=f32(o+5);if(!relok(rx,ry))return null;hs.push([rx,ry]);o+=9;}
+      else if(fl===0){hs.push(null);o+=1;}
+      else return null;
+    }
+    return {x,y,h1:hs[0],h2:hs[1],end:o};
+  }
+  function tryPath(o0){
+    if(o0+4>n)return null;
+    const k=i32(o0);
+    if(k<3||k>4000)return null;
+    let o=o0+4;const pts=[];
+    for(let i=0;i<k;i++){const r=readPt(o);if(!r)return null;pts.push(r);o=r.end;}
+    return {pts,end:o};
+  }
+  /* the raster preview starts at the first embedded PNG — geometry is before it */
+  let limit=n;
+  const sig=[0x89,0x50,0x4E,0x47];
+  outer: for(let i=0;i<n-4;i++){
+    for(let s=0;s<4;s++) if(u8(i+s)!==sig[s]) continue outer;
+    limit=i;break;
+  }
+  const paths=[];let o=1024;
+  while(o<limit-12){
+    const r=tryPath(o);
+    if(r&&r.pts.length>=3){paths.push(r.pts);o=r.end;}
+    else o++;
+  }
+  if(!paths.length)return null;
+  /* millimetres -> inches, and build one path string the node editor and cut
+     engine already understand */
+  const S=1/25.4,num=v=>(Math.round(v*1000)/1000);
+  let d="";
+  for(const p of paths){
+    d+="M"+num(p[0].x*S)+" "+num(p[0].y*S);
+    for(let i=0;i<p.length;i++){
+      const a=p[i],b=p[(i+1)%p.length];
+      if(a.h2||b.h1){
+        const c1x=(a.x+(a.h2?a.h2[0]:0))*S,c1y=(a.y+(a.h2?a.h2[1]:0))*S,
+              c2x=(b.x+(b.h1?b.h1[0]:0))*S,c2y=(b.y+(b.h1?b.h1[1]:0))*S;
+        d+="C"+num(c1x)+" "+num(c1y)+" "+num(c2x)+" "+num(c2y)+" "+num(b.x*S)+" "+num(b.y*S);
+      }else{
+        d+="L"+num(b.x*S)+" "+num(b.y*S);
+      }
+    }
+    d+="Z";
+  }
+  return {d,count:paths.length};
+}
+function studioImport(f){const r=new FileReader();r.onload=()=>{
+  let vec=null;
+  try{vec=studioVectors(r.result);}catch(e){vec=null;}
+  if(vec&&vec.d){
+    const nodes=parsePathToNodes(vec.d),subs=nodes.length?nodesToSubpaths(nodes):[];
+    if(subs.length){
+      const bb=bboxOf(subs);
+      const o=addObject(subs,f.name.replace(/\.[^.]+$/,""),bb.h);
+      o.nodes=nodes.length?nodes:null;
+      return;
+    }
+  }
+  /* nothing parseable — fall back to tracing the embedded preview */
+  const png=extractLargestPNG(r.result);
+  if(!png){alert("Couldn't find cut lines or an image inside that .studio3 (proprietary format). Export a PNG or SVG from Silhouette Studio and I'll cut that.");return;}
+  loadImageForTrace(URL.createObjectURL(new Blob([png],{type:"image/png"})));
+};r.onerror=()=>alert("Couldn't read that file.");r.readAsArrayBuffer(f);}
 function onVecFile(f){const ext=(f.name.split(".").pop()||"").toLowerCase();if(ext==="dxf"){importDXF(f);return;}if(ext==="svg"){importSVG(f);return;}if(ext==="studio3"||ext==="studio"){studioImport(f);return;}if(["png","jpg","jpeg","gif","bmp","webp"].indexOf(ext)<0){alert("Unsupported file. Use SVG, DXF, an image, or a Silhouette .studio3.");return;}loadImageForTrace(URL.createObjectURL(f));}
 function isDark(fill){if(!fill)return false;const m=fill.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/i);let r,g,b;if(m){r=+m[1];g=+m[2];b=+m[3];}else if(fill[0]==="#"){const h=fill.slice(1);if(h.length===3){r=parseInt(h[0]+h[0],16);g=parseInt(h[1]+h[1],16);b=parseInt(h[2]+h[2],16);}else{r=parseInt(h.slice(0,2),16);g=parseInt(h.slice(2,4),16);b=parseInt(h.slice(4,6),16);}}else return false;return (0.299*r+0.587*g+0.114*b)<128;}
 function sampleGeom(el,out){let t=0;try{t=el.getTotalLength();}catch(e){return;}if(!t||!isFinite(t))return;const step=Math.max(0.3,t/1400),ctm=el.getCTM(),pts=[];for(let d=0;d<=t;d+=step){let p=el.getPointAtLength(d);if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;pts.push([p.x,p.y]);}if(pts.length>1)out.push(pts);}
