@@ -525,6 +525,43 @@ var JZTrace = (function () {
     return null;
   }
 
+  /* A stretch that never leaves its own chord by more than the noise
+     allowance IS a straight line — the wobble in it is the pixel grid and the
+     scan, not the artwork. A sign has more dead-straight edges than anything
+     else, and fitting wavy curves through them is what makes a trace look
+     hand-drawn. So the line is checked FIRST, at every level of the split,
+     and it wins whenever the points allow it. The one thing it must not eat
+     is a gentle sweep, so the points also have to actually progress along the
+     chord instead of curving one way then back. */
+  function lineFits(pts, tols) {
+    var n = pts.length, i, o;
+    if (n < 3) return false;
+    var L = dist(pts[0], pts[n - 1]);
+    if (L < 2) return false;
+    var sag = 0, side = 0, flip = 0, last = 0;
+    for (i = 1; i < n - 1; i++) {
+      o = offLine(pts[0], pts[n - 1], pts[i]);
+      if (o > tols[i] + 0.06) return false;
+      if (o > sag) sag = o;
+      /* which side of the chord — a real arc sits all on one side */
+      var cr = (pts[n-1][0]-pts[0][0])*(pts[i][1]-pts[0][1])
+             - (pts[n-1][1]-pts[0][1])*(pts[i][0]-pts[0][0]);
+      side = cr > 0 ? 1 : cr < 0 ? -1 : 0;
+      if (side && last && side !== last) flip++;
+      if (side) last = side;
+    }
+    /* noise crosses the chord back and forth; a slow arc does not. An arc
+       that stays inside the allowance anyway is below what the pixels can
+       distinguish — let it be a line only if it wobbles like noise or is
+       nearly flat. */
+    return flip >= 2 || sag < 0.12;
+  }
+  function pushLine(pts, out, off) {
+    var n = pts.length, a = pts[0], b = pts[n - 1],
+        t = mul(norm(sub(b, a)), dist(a, b) / 3);
+    out.push({ bez: [a, add(a, t), sub(b, t), b], a: off, b: off + n - 1, line: true });
+  }
+
   /* off is where this stretch starts in the run it was cut from, so every
      curve remembers which points it came from and the tidy-up pass below can
      put two of them back together. */
@@ -538,6 +575,7 @@ var JZTrace = (function () {
                  a: off, b: off + 1 });
       return;
     }
+    if (lineFits(pts, tols)) { pushLine(pts, out, off); return; }
     if (depth < 24) {
       var got = fitTry(pts, tols, t1, t2);
       if (got) { out.push({ bez: got, a: off, b: off + n - 1 }); return; }
@@ -564,6 +602,18 @@ var JZTrace = (function () {
         var A = segs[i], B = segs[i + 1],
             pts = run.slice(A.a, B.b + 1), tol = rt.slice(A.a, B.b + 1);
         if (pts.length < 3) continue;
+        /* two lines that still make one line become one line; a line never
+           goes back into a curve — that would put the wobble back */
+        if (A.line || B.line) {
+          if (A.line && B.line && lineFits(pts, tol)) {
+            var la = pts[0], lb = pts[pts.length - 1],
+                lt = mul(norm(sub(lb, la)), dist(la, lb) / 3);
+            segs.splice(i, 2, { bez: [la, add(la, lt), sub(lb, lt), lb],
+                                a: A.a, b: B.b, line: true });
+            changed = true; i--;
+          }
+          continue;
+        }
         var t1 = norm(sub(A.bez[1], A.bez[0])), t2 = norm(sub(B.bez[2], B.bez[3]));
         if (!len(t1) || !len(t2)) continue;
         var got = fitTry(pts, tol, t1, t2);
