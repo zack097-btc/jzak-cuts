@@ -345,6 +345,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     </div>
     <div class="grp">
       <h3>Output</h3>
+      <div class="chk"><input type="checkbox" id="cutOrigin" checked><label for="cutOrigin" style="margin:0">Start cut at the blade (ignore mat position)</label></div>
       <div class="chk"><input type="checkbox" id="flipX"><label for="flipX" style="margin:0">Flip feed (X)</label></div>
       <div class="chk"><input type="checkbox" id="flipY" checked><label for="flipY" style="margin:0">Flip across (Y)</label></div>
       <div class="chk"><input type="checkbox" id="weed" checked><label for="weed" style="margin:0">Weed border</label></div>
@@ -10105,8 +10106,16 @@ function polyToHPGL(line,map){if(line.length<2)return "";const [sx,sy]=map(line[
    steps-per-inch, per axis. */
 function hpglMap(refBB){const spi=parseFloat($("stepsPerIn").value||"1016"),matW=parseFloat($("matWidth").value||"24"),
   flipX=$("flipX").checked,flipY=$("flipY").checked,cal=getCal(),
-  spanX=Math.max(refBB.minX+refBB.w,1);
-  return (x,y)=>{let X=flipX?spanX-x:x,Y=flipY?matW-y:y;return [Math.round(X*spi*cal.x),Math.round(Y*spi*cal.y)];};}
+  /* "Start cut at the blade" (the default, and how every pro spooler works):
+     the job is cut relative to its own corner, so it begins right where you
+     set the origin on the machine — the mat position is only layout. Turn it
+     off and the mat position becomes real machine coordinates, for repeat
+     jobs and print-and-cut where absolute placement is the point. */
+  rel=($("cutOrigin")?$("cutOrigin").checked:true),
+  ox=rel?refBB.minX:0, oy=rel?refBB.minY:0,
+  spanX=rel?Math.max(refBB.w,0.001):Math.max(refBB.minX+refBB.w,1),
+  spanY=rel?Math.max(refBB.h,0.001):matW;
+  return (x,y)=>{let X=x-ox,Y=y-oy;if(flipX)X=spanX-X;if(flipY)Y=spanY-Y;return [Math.round(X*spi*cal.x),Math.round(Y*spi*cal.y)];};}
 function hpglHeader(){let s="IN;SP1;";if($("sendVSFS").checked)s+=`VS${Math.max(1,parseInt($("speed").value))};FS${Math.max(1,parseInt($("force").value))};`;return s;}
 function hpglBody(lines,markBB,map){let s=hpglHeader();
   if($("regMarks").checked)for(const seg of regMarkLines(markBB))s+=polyToHPGL(seg,map);
@@ -10169,7 +10178,7 @@ function panelLines(p,bb){if(!clipReady())return null;
   const rect=[[bb.minX-1,p.y0],[bb.minX+bb.w+1,p.y0],[bb.minX+bb.w+1,p.y1],[bb.minX-1,p.y1]];
   const got=clipRun(ClipperLib.ClipType.ctIntersection,linesToClip(allLines()),linesToClip([rect.concat([rect[0]])]));
   /* drop the panel to the material edge: its top rests at y=0.25 */
-  return clipToLines(got).map(l=>l.map(([x,y])=>[x,y-p.y0+0.25]));}
+  return clipToLines(got).map(l=>l.map(([x,y])=>[x-bb.minX,y-p.y0+0.25]));}
 function tilesUI(doneUpTo){const overlap=Math.max(0,parseFloat(($("tileOv")||{}).value||"0.5")),
   plan=panelPlan(overlap);
   if(plan.fits){showModal('<h2>Cut in panels</h2><p class="sub">No panels needed — this whole job fits your material ('+plan.usable.toFixed(1)+'" usable of '+$("matWidth").value+'").</p><div class="btns"><button onclick="closeModal()">Close</button></div>');return;}
@@ -10186,14 +10195,14 @@ function tilesUI(doneUpTo){const overlap=Math.max(0,parseFloat(($("tileOv")||{})
     '<div class="btns"><button id="pltPanelsBtn">Download a .plt per panel</button><button onclick="closeModal()">'+(done?'Done':'Close')+'</button></div>');
   $("tileOv").onchange=()=>tilesUI(0);
   $("pltPanelsBtn").onclick=()=>{plan.panels.forEach((p,i)=>{const ls=panelLines(p,plan.bb);if(!ls)return;
-    const pb=bboxOf(ls);download("jzak-panel"+(i+1)+".plt",hpglBody(ls,pb,hpglMap(plan.bb)));});};
+    const pb=bboxOf(ls);download("jzak-panel"+(i+1)+".plt",hpglBody(ls,pb,hpglMap(pb)));});};
   const btn=$("cutPanelBtn");
   if(btn)btn.onclick=async()=>{
     if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}
     btn.disabled=true;btn.textContent="Cutting…";
     const ls=panelLines(plan.panels[doneUpTo],plan.bb);
     if(!ls||!ls.length){alert("This panel came out empty — nothing to cut here.");tilesUI(doneUpTo+1);return;}
-    try{await writeToCutter(hpglBody(ls,bboxOf(ls),hpglMap(plan.bb)));}
+    try{const pb2=bboxOf(ls);await writeToCutter(hpglBody(ls,pb2,hpglMap(pb2)));}
     catch(e){alert("Cut failed: "+(e.message||e));btn.disabled=false;btn.textContent="✂ Cut this panel";return;}
     tilesUI(doneUpTo+1);
   };}
@@ -10245,8 +10254,8 @@ function refreshAssets(){const a=lsGet("jzakcuts.assets"),sel=$("assetSelect"),c
 function saveAsset(){const o=selected();if(!o){alert("Select an object to save.");return;}const name=($("assetName").value||o.name||"design").trim(),a=lsGet("jzakcuts.assets");a[name]={subpaths:o.subpaths,bbox:o.bbox};lsSet("jzakcuts.assets",a);refreshAssets();$("assetSelect").value=name;$("assetName").value="";}
 function addAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("jzakcuts.assets");if(a[k]){const d=a[k];addObject(JSON.parse(JSON.stringify(d.subpaths)),k,d.bbox&&d.bbox.h<40?d.bbox.h:3);}}
 function delAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("jzakcuts.assets");delete a[k];lsSet("jzakcuts.assets",a);refreshAssets();}
-function jobSnapshot(){return {objects:state.objects.map(o=>({subpaths:o.subpaths,bbox:o.bbox,name:o.name,posX:o.posX,posY:o.posY,height:o.height,width:objWidth(o),rotation:o.rotation,mirror:o.mirror,color:o.color})),settings:{matWidth:$("matWidth").value,matLen:$("matLen").value,stepsPerIn:$("stepsPerIn").value,speed:$("speed").value,force:$("force").value,bladeOff:$("bladeOff").value,bladeComp:$("bladeComp").checked,flipX:$("flipX").checked,flipY:$("flipY").checked,weed:$("weed").checked,regMarks:$("regMarks").checked}};}
-function applySnapshot(j){if(!j||!j.objects){alert("That file isn't a JZAK Cuts job.");return;}histPush();state.objects=j.objects.map(o=>{const bb=o.bbox||bboxOf(o.subpaths),h=o.height||3;return {id:nextId++,subpaths:o.subpaths,bbox:bb,name:o.name||"object",posX:o.posX||1,posY:o.posY||1,height:h,width:(o.width!=null?o.width:bb.w*(h/(bb.h||1))),rotation:o.rotation||0,mirror:!!o.mirror,color:o.color||"#111"};});state.selIds=state.objects.length?[state.objects[0].id]:[];state.selId=state.selIds[0]||null;const st=j.settings||{},setIf=(id,v)=>{if(v!==undefined&&v!==null)$(id).value=v;};setIf("matWidth",st.matWidth);if(st.matLen!==undefined)$("matLen").value=st.matLen;setIf("stepsPerIn",st.stepsPerIn);setIf("speed",st.speed);setIf("force",st.force);setIf("bladeOff",st.bladeOff);if(st.bladeComp!==undefined)$("bladeComp").checked=st.bladeComp;if(st.flipX!==undefined)$("flipX").checked=st.flipX;if(st.flipY!==undefined)$("flipY").checked=st.flipY;if(st.weed!==undefined)$("weed").checked=st.weed;if(st.regMarks!==undefined)$("regMarks").checked=st.regMarks;$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;$("frcOut").textContent=$("force").value;renderObjList();syncInputs();resetView();draw();}
+function jobSnapshot(){return {objects:state.objects.map(o=>({subpaths:o.subpaths,bbox:o.bbox,name:o.name,posX:o.posX,posY:o.posY,height:o.height,width:objWidth(o),rotation:o.rotation,mirror:o.mirror,color:o.color})),settings:{matWidth:$("matWidth").value,matLen:$("matLen").value,cutOrigin:$("cutOrigin").checked,stepsPerIn:$("stepsPerIn").value,speed:$("speed").value,force:$("force").value,bladeOff:$("bladeOff").value,bladeComp:$("bladeComp").checked,flipX:$("flipX").checked,flipY:$("flipY").checked,weed:$("weed").checked,regMarks:$("regMarks").checked}};}
+function applySnapshot(j){if(!j||!j.objects){alert("That file isn't a JZAK Cuts job.");return;}histPush();state.objects=j.objects.map(o=>{const bb=o.bbox||bboxOf(o.subpaths),h=o.height||3;return {id:nextId++,subpaths:o.subpaths,bbox:bb,name:o.name||"object",posX:o.posX||1,posY:o.posY||1,height:h,width:(o.width!=null?o.width:bb.w*(h/(bb.h||1))),rotation:o.rotation||0,mirror:!!o.mirror,color:o.color||"#111"};});state.selIds=state.objects.length?[state.objects[0].id]:[];state.selId=state.selIds[0]||null;const st=j.settings||{},setIf=(id,v)=>{if(v!==undefined&&v!==null)$(id).value=v;};setIf("matWidth",st.matWidth);if(st.matLen!==undefined)$("matLen").value=st.matLen;if(st.cutOrigin!==undefined)$("cutOrigin").checked=st.cutOrigin;setIf("stepsPerIn",st.stepsPerIn);setIf("speed",st.speed);setIf("force",st.force);setIf("bladeOff",st.bladeOff);if(st.bladeComp!==undefined)$("bladeComp").checked=st.bladeComp;if(st.flipX!==undefined)$("flipX").checked=st.flipX;if(st.flipY!==undefined)$("flipY").checked=st.flipY;if(st.weed!==undefined)$("weed").checked=st.weed;if(st.regMarks!==undefined)$("regMarks").checked=st.regMarks;$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;$("frcOut").textContent=$("force").value;renderObjList();syncInputs();resetView();draw();}
 function refreshJobSelect(){const jobs=lsGet("jzakcuts.jobs"),sel=$("jobSelect"),cur=sel.value;sel.innerHTML='<option value="">—</option>'+Object.keys(jobs).map(k=>`<option>${k.replace(/</g,"&lt;")}</option>`).join("");if(jobs[cur])sel.value=cur;}
 function saveJob(){const name=($("jobName").value||"").trim();if(!name){alert("Type a job name in the Job Library box first.");return;}if(!state.objects.length){alert("Add something to save.");return;}const jobs=lsGet("jzakcuts.jobs");jobs[name]=jobSnapshot();lsSet("jzakcuts.jobs",jobs);refreshJobSelect();$("jobSelect").value=name;$("jobName").value="";}
 function loadJob(){const k=$("jobSelect").value;if(!k){alert("Pick a saved job from the dropdown first.");return;}const jobs=lsGet("jzakcuts.jobs");if(jobs[k])applySnapshot(jobs[k]);}
