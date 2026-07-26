@@ -9519,7 +9519,14 @@ async function buildText(){const text=$("textInput").value;if(!text.trim()){aler
 function flattenOpentype(path){const N=16,subs=[];let cur=[],start=null,px=0,py=0;for(const c of path.commands){if(c.type==="M"){if(cur.length)subs.push(cur);cur=[[c.x,c.y]];start=[c.x,c.y];px=c.x;py=c.y;}else if(c.type==="L"){cur.push([c.x,c.y]);px=c.x;py=c.y;}else if(c.type==="C"){sampleCubic([px,py],[c.x1,c.y1],[c.x2,c.y2],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Q"){sampleQuad([px,py],[c.x1,c.y1],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Z"){if(start)cur.push([start[0],start[1]]);if(cur.length)subs.push(cur);cur=[];}}if(cur.length)subs.push(cur);return subs;}
 
 /* ---- SVG / DXF / image / studio import ---- */
-function importSVG(file){const r=new FileReader();r.onload=()=>{try{const doc=new DOMParser().parseFromString(r.result,"image/svg+xml"),svg=doc.documentElement,holder=document.createElement("div");holder.style.cssText="position:absolute;left:-99999px;top:-99999px;width:2000px;height:2000px";holder.appendChild(svg);document.body.appendChild(holder);const subs=[];svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse").forEach(el=>{let t=0;try{t=el.getTotalLength();}catch(e){return;}if(!t||!isFinite(t))return;const step=Math.max(0.4,t/400),ctm=el.getCTM(),pts=[];for(let d=0;d<=t;d+=step){let p=el.getPointAtLength(d);if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;pts.push([p.x,p.y]);}if(pts.length>1)subs.push(pts);});let upi=96;const wA=svg.getAttribute("width")||"",vb=(svg.getAttribute("viewBox")||"").split(/[ ,]+/).map(Number),mm=wA.match(/([\d.]+)mm/),inm=wA.match(/([\d.]+)in/);if(vb.length===4&&(mm||inm)){const uW=vb[2],pin=mm?parseFloat(mm[1])/25.4:parseFloat(inm[1]);if(pin>0)upi=uW/pin;}document.body.removeChild(holder);if(!subs.length){alert("No cuttable paths found in that SVG.");return;}const scaled=subs.map(sp=>sp.map(([x,y])=>[x/upi,y/upi])),bb=bboxOf(scaled);addObject(scaled,file.name,bb.h);}catch(e){alert("SVG import failed: "+(e.message||e));}};r.readAsText(file);}
+function importSVG(file){const r=new FileReader();r.onload=()=>{try{const doc=new DOMParser().parseFromString(r.result,"image/svg+xml"),svg=doc.documentElement,holder=document.createElement("div");holder.style.cssText="position:absolute;left:-99999px;top:-99999px;width:2000px;height:2000px";holder.appendChild(svg);document.body.appendChild(holder);const subs=[];svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse").forEach(el=>{let t=0;try{t=el.getTotalLength();}catch(e){return;}if(!t||!isFinite(t))return;const step=Math.max(0.4,t/400),ctm=el.getCTM(),pts=[];for(let d=0;d<=t;d+=step){let p=el.getPointAtLength(d);if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;pts.push([p.x,p.y]);}if(pts.length>1)subs.push(pts);});/* The sampled points are in RENDERED pixels (the CTM maps them there), so
+   inches-per-unit must come from the rendered pixel width against the SVG's
+   physical width — not from viewBox units, which the CTM has already eaten.
+   An SVG that declares no physical size stays at the CSS 96 px/inch. */
+let upi=96;const wA=svg.getAttribute("width")||"",vb=(svg.getAttribute("viewBox")||"").split(/[ ,]+/).map(Number),mm=wA.match(/([\d.]+)mm/),inm=wA.match(/([\d.]+)in/),pin=mm?parseFloat(mm[1])/25.4:(inm?parseFloat(inm[1]):0);
+if(pin>0){let pxW=0;try{pxW=svg.width.baseVal.value;}catch(e){}
+  if(pxW>0)upi=pxW/pin;else if(vb.length===4&&vb[2]>0)upi=vb[2]/pin;}
+document.body.removeChild(holder);if(!subs.length){alert("No cuttable paths found in that SVG.");return;}const scaled=subs.map(sp=>sp.map(([x,y])=>[x/upi,y/upi])),bb=bboxOf(scaled);addObject(scaled,file.name,bb.h);}catch(e){alert("SVG import failed: "+(e.message||e));}};r.readAsText(file);}
 function parseDXF(text){const rows=text.split(/\r\n|\r|\n/),pairs=[];for(let i=0;i+1<rows.length;i+=2)pairs.push([parseInt(rows[i].trim(),10),rows[i+1].trim()]);const ents=[];let cur=null;for(const [code,val] of pairs){if(isNaN(code))continue;if(code===0){if(cur)ents.push(cur);cur={type:val,c:{}};}else if(cur){(cur.c[code]=cur.c[code]||[]).push(val);}}if(cur)ents.push(cur);const n=v=>parseFloat(v),subs=[];let poly=null;for(const e of ents){const c=e.c;if(e.type==="LINE"&&c[10]&&c[11])subs.push([[n(c[10][0]),-n(c[20][0])],[n(c[11][0]),-n(c[21][0])]]);else if(e.type==="LWPOLYLINE"&&c[10]){const xs=c[10],ys=c[20]||[],p=[];for(let i=0;i<xs.length;i++)p.push([n(xs[i]),-n(ys[i]||0)]);if(c[70]&&(parseInt(c[70][0],10)&1)&&p.length)p.push(p[0].slice());if(p.length>1)subs.push(p);}else if(e.type==="CIRCLE"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]),p=[];for(let i=0;i<=64;i++){const a=i/64*2*Math.PI;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="ARC"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]);let a0=n(c[50][0]),a1=n(c[51][0]);if(a1<a0)a1+=360;const st=Math.max(8,Math.round((a1-a0)/5)),p=[];for(let i=0;i<=st;i++){const a=(a0+(a1-a0)*i/st)*Math.PI/180;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="POLYLINE")poly=[];else if(e.type==="VERTEX"&&poly&&c[10])poly.push([n(c[10][0]),-n(c[20][0])]);else if(e.type==="SEQEND"){if(poly&&poly.length>1)subs.push(poly);poly=null;}}return subs;}
 function importDXF(file){const r=new FileReader();r.onload=()=>{try{const subs=parseDXF(r.result);if(!subs.length){alert("No cuttable entities found in that DXF.");return;}const bb=bboxOf(subs);addObject(subs,file.name,bb.h);}catch(e){alert("DXF import failed: "+(e.message||e));}};r.readAsText(file);}
 let traceData=null,lastTraceId=null,lastTraceIds=null;
@@ -9579,20 +9586,79 @@ function studioVectors(buf){
     for(let s=0;s<4;s++) if(u8(i+s)!==sig[s]) continue outer;
     limit=i;break;
   }
+  /* A mis-framed record can swallow several real loops — and a couple of
+     garbage anchors — into one giant "path" whose closing edge slashes across
+     the artwork. The tell is an extreme jump between anchors, hundreds of mm
+     where real outline points sit a few mm apart. Only a path carrying that
+     proof of corruption gets rescued: it is split back into its real loops at
+     every statistically out-of-family jump, and pieces that are just garbage
+     (no spread) are dropped. Cleanly framed paths are never touched, so long
+     straight strokes in real artwork stay whole. */
+  function splitBad(pts){
+    const steps=[];
+    for(let i=1;i<pts.length;i++)steps.push(Math.abs(pts[i].x-pts[i-1].x)+Math.abs(pts[i].y-pts[i-1].y));
+    if(!steps.some(s=>s>120))return [pts];
+    const med=steps.slice().sort((a,b)=>a-b)[steps.length>>1]||1,
+          cut=Math.max(6*med,15),out=[];
+    let run=[pts[0]];
+    for(let i=1;i<pts.length;i++){
+      /* an extreme stride is garbage no matter what; a moderate one WITH
+         curve handles is a real smooth segment, and with none it is two
+         unrelated loops butted together */
+      const bare=!(pts[i-1].h2||pts[i].h1);
+      if(steps[i-1]>120||(steps[i-1]>cut&&bare)){if(run.length>=3)out.push(run);run=[pts[i]];}
+      else run.push(pts[i]);
+    }
+    if(run.length>=3)out.push(run);
+    /* a rescued fragment smaller than a few mm is shrapnel from the corrupt
+       record, not artwork — and left in, it can stretch the design's bounding
+       box far past the real art */
+    const kept=out.filter(p=>{
+      let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+      for(const q of p){if(q.x<mnx)mnx=q.x;if(q.x>mxx)mxx=q.x;if(q.y<mny)mny=q.y;if(q.y>mxy)mxy=q.y;}
+      return (mxx-mnx)+(mxy-mny)>4;
+    });
+    /* a rescued run only closes if its ends actually meet — force-closing a
+       broken run draws a straight seam across the artwork */
+    for(const p of kept){
+      const a=p[0],b=p[p.length-1];
+      p.open=Math.abs(a.x-b.x)+Math.abs(a.y-b.y)>3;
+    }
+    return kept;
+  }
   const paths=[];let o=1024;
   while(o<limit-12){
     const r=tryPath(o);
-    if(r&&r.pts.length>=3){paths.push(r.pts);o=r.end;}
+    if(r&&r.pts.length>=3){for(const c of splitBad(r.pts))paths.push(c);o=r.end;}
     else o++;
   }
   if(!paths.length)return null;
+  /* Scanning an undocumented format produces the odd false positive: a few
+     bytes of metadata that happen to parse as a tiny "path" sitting nowhere
+     near the artwork. Real specks live IN the design (mud drops beside the
+     donkey); junk lives alone. Anything tiny and isolated is dropped. */
+  {
+    const span=p=>{let a=1e9,b=1e9,c=-1e9,d2=-1e9;
+      for(const q of p){if(q.x<a)a=q.x;if(q.x>c)c=q.x;if(q.y<b)b=q.y;if(q.y>d2)d2=q.y;}
+      return {a,b,c,d:d2,s:(c-a)+(d2-b)};};
+    const boxes=paths.map(span),big=boxes.filter(bx=>bx.s>8);
+    if(big.length){
+      let ua=1e9,ub=1e9,uc=-1e9,ud=-1e9;
+      for(const bx of big){if(bx.a<ua)ua=bx.a;if(bx.b<ub)ub=bx.b;if(bx.c>uc)uc=bx.c;if(bx.d>ud)ud=bx.d;}
+      for(let i=paths.length-1;i>=0;i--){
+        const bx=boxes[i];
+        if(bx.s<=8&&(bx.c<ua-25||bx.a>uc+25||bx.d<ub-25||bx.b>ud+25))paths.splice(i,1);
+      }
+    }
+  }
   /* millimetres -> inches, and build one path string the node editor and cut
      engine already understand */
   const S=1/25.4,num=v=>(Math.round(v*1000)/1000);
   let d="";
   for(const p of paths){
     d+="M"+num(p[0].x*S)+" "+num(p[0].y*S);
-    for(let i=0;i<p.length;i++){
+    const segs=p.open?p.length-1:p.length;
+    for(let i=0;i<segs;i++){
       const a=p[i],b=p[(i+1)%p.length];
       if(a.h2||b.h1){
         const c1x=(a.x+(a.h2?a.h2[0]:0))*S,c1y=(a.y+(a.h2?a.h2[1]:0))*S,
@@ -9602,7 +9668,7 @@ function studioVectors(buf){
         d+="L"+num(b.x*S)+" "+num(b.y*S);
       }
     }
-    d+="Z";
+    if(!p.open)d+="Z";
   }
   return {d,count:paths.length};
 }
@@ -9659,9 +9725,16 @@ function placeTraceLayers(layers,replace){const W=traceData.width,H=traceData.he
 function traceRun(replace){if(!traceData)return;if(typeof JZTrace==="undefined"){alert("Tracing engine not loaded. SVG/DXF still work offline.");return;}
   const mode=($("traceMode")||{}).value||"auto",sm=parseInt(($("smooth")||{}).value||"3");
   if(mode!=="bw"){let cres;try{cres=JZTrace.traceColor(traceData,{colors:parseInt(($("traceColors")||{}).value||"0"),smooth:sm,turdsize:2,subpixel:true});}catch(e){alert("Trace failed: "+(e.message||e));return;}
-    const layers=(cres&&cres.layers?cres.layers:[]).filter(L=>L.d);
+    let layers=(cres&&cres.layers?cres.layers:[]).filter(L=>L.d);
     /* one-color art gains nothing from color mode — Auto falls through to the
-       threshold trace, which also handles light-on-dark via Invert */
+       threshold trace, which also handles light-on-dark via Invert. That
+       includes art where one ink owns nearly everything: fine engraving-style
+       line work is all edges, so JPEG blur breeds phantom "halo" colors that
+       hold a few percent of the pixels. One dominant ink = single-color art. */
+    if(mode==="auto"&&layers.length>=2){
+      const tot=layers.reduce((s,L)=>s+(L.px||0),0);
+      if(tot&&(layers[0].px||0)/tot>=0.92)layers=[];
+    }
     if(layers.length>=2||(mode==="color"&&layers.length)){placeTraceLayers(layers,replace);return;}
     if(mode==="color"){alert("Couldn't split that into color layers — try Single color mode.");return;}}
   const thr=parseInt($("thresh").value),inv=$("traceInvert").checked;let res;
