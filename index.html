@@ -102,6 +102,21 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
   .sw:hover{outline:2px solid #8fb4f0}
   .zoomctl{display:flex;align-items:center;gap:5px}
   .zoomctl button{padding:1px 8px}
+  /* production dialogs: cut-by-color, panels, calibration */
+  .jmodal{position:fixed;inset:0;background:rgba(18,26,38,.55);z-index:90;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:44px 16px}
+  .jmodal.on{display:flex}
+  .jmodal .box{background:#fff;border-radius:12px;max-width:600px;width:100%;padding:18px 22px 20px;box-shadow:0 14px 44px rgba(0,0,0,.35);font-size:13.5px}
+  .jmodal h2{margin:0 0 4px;font-size:17px}
+  .jmodal .sub{color:#5b6672;margin:0 0 12px}
+  .jmodal .rowline{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #dfe4ea;border-radius:9px;margin-bottom:8px}
+  .jmodal .rowline.done{opacity:.55}
+  .jmodal .rowline.now{border-color:#1e6fe0;box-shadow:0 0 0 2px rgba(30,111,224,.15)}
+  .jmodal .chip{width:22px;height:22px;border-radius:6px;border:1px solid #b9c2cc;flex:none}
+  .jmodal .grow{flex:1}
+  .jmodal .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+  .jmodal input[type=number]{width:90px}
+  .jmodal label{font-size:12px;color:#5b6672;display:block;margin:8px 0 3px}
+  .jmodal .note{background:#f2f6fb;border:1px solid #d8e4f4;border-radius:8px;padding:9px 11px;margin:10px 0;color:#31435c}
 </style>
 </head>
 <body>
@@ -131,6 +146,8 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
   </div></div>
   <div class="menu"><span>Cut</span><div class="submenu">
     <a data-act="connect">Connect Cutter</a><a data-act="send">Send to Cutter</a><a data-act="test">Test Cut</a>
+    <hr><a data-act="cutcolor">Cut by Color (layered vinyl)…</a><a data-act="tiles">Cut in Panels (bigger than the roll)…</a>
+    <hr><a data-act="calib">Calibration Wizard…</a>
     <hr><a data-act="viewhpgl">View HPGL</a>
   </div></div>
   <div class="menu"><span>Help</span><div class="submenu"><a data-act="about">About JZAK Cuts</a></div></div>
@@ -313,6 +330,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <label>Material preset</label>
       <select id="preset"><option value="">— choose —</option><option value="oracal651">Oracal 651 · calendered</option><option value="oracal751">Oracal 751 · cast</option><option value="htv">HTV (mirrors)</option><option value="reflective">Reflective</option><option value="sandblast">Sandblast / thick</option><option value="window">Window tint / thin</option></select>
       <div class="row"><div><label>Vinyl width (in)</label><input type="number" id="matWidth" value="24" step="0.5" min="1"></div><div><label>Steps / inch</label><input type="number" id="stepsPerIn" value="1016" step="1" min="100"></div></div>
+      <div class="hint" id="calNote"></div>
     </div>
     <div class="grp">
       <h3>Cut Settings</h3>
@@ -9980,10 +9998,155 @@ window.addEventListener("keydown",e=>{
 });
 $("undoBtn").onclick=undo;$("redoBtn").onclick=redo;
 
+/* ---- production dialogs (cut-by-color, panels, calibration) ---- */
+function showModal(html){let ov=$("jmodal");if(!ov){ov=document.createElement("div");ov.id="jmodal";ov.className="jmodal";document.body.appendChild(ov);ov.addEventListener("click",e=>{if(e.target===ov)closeModal();});}
+  ov.innerHTML='<div class="box">'+html+'</div>';ov.classList.add("on");}
+function closeModal(){const ov=$("jmodal");if(ov)ov.classList.remove("on");}
+
+/* ---- size calibration: correction factors on top of steps-per-inch.
+   X runs along the vinyl feed, Y across the roll. 1 = uncorrected. ---- */
+function getCal(){const c=lsGet("jzakcuts.cal");return {x:(c&&c.x)||1,y:(c&&c.y)||1};}
+function setCal(x,y){lsSet("jzakcuts.cal",{x:x,y:y});updCalNote();}
+function updCalNote(){const el=$("calNote");if(!el)return;const c=getCal();
+  el.textContent=(c.x===1&&c.y===1)?"Size calibration: none (run the wizard in the Cut menu)":
+    "Size calibration: feed "+(c.x*100).toFixed(2)+"% · width "+(c.y*100).toFixed(2)+"%";}
+
 /* ---- overcut + HPGL ---- */
 function withOvercut(line){if(!$("bladeComp").checked)return line;const oc=(parseFloat($("bladeOff").value||"0")/25.4);if(oc<=0||line.length<3)return line;const a=line[0],last=line[line.length-1];if(Math.hypot(last[0]-a[0],last[1]-a[1])>=0.01)return line;const b=line[1],dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1;return line.concat([[a[0]+dx/Ln*oc,a[1]+dy/Ln*oc]]);}
 function polyToHPGL(line,map){if(line.length<2)return "";const [sx,sy]=map(line[0][0],line[0][1]);return `PU${sx},${sy};PD`+line.slice(1).map(([x,y])=>{const[X,Y]=map(x,y);return X+","+Y;}).join(",")+";";}
-function generateHPGL(){const lines=allLines();if(!lines.length)return "";const spi=parseFloat($("stepsPerIn").value||"1016"),matW=parseFloat($("matWidth").value||"24"),flipX=$("flipX").checked,flipY=$("flipY").checked,bb=unionBBox(),spanX=Math.max(bb.minX+bb.w,1);const map=(x,y)=>{let X=flipX?spanX-x:x,Y=flipY?matW-y:y;return [Math.round(X*spi),Math.round(Y*spi)];};let s="IN;SP1;";if($("sendVSFS").checked)s+=`VS${Math.max(1,parseInt($("speed").value))};FS${Math.max(1,parseInt($("force").value))};`;if($("regMarks").checked)for(const seg of regMarkLines(bb))s+=polyToHPGL(seg,map);if($("weed").checked){const m=0.25,c=[[bb.minX-m,bb.minY-m],[bb.minX+bb.w+m,bb.minY-m],[bb.minX+bb.w+m,bb.minY+bb.h+m],[bb.minX-m,bb.minY+bb.h+m],[bb.minX-m,bb.minY-m]];s+=polyToHPGL(c,map);}for(let line of lines)s+=polyToHPGL(withOvercut(line),map);s+="PU0,0;SP0;";return s;}
+/* One mapping for a whole job. Every layer of a colour cut and every panel of
+   a tiled cut is built against the SAME reference frame, so the pieces land
+   in registration with each other. Size calibration rides on top of
+   steps-per-inch, per axis. */
+function hpglMap(refBB){const spi=parseFloat($("stepsPerIn").value||"1016"),matW=parseFloat($("matWidth").value||"24"),
+  flipX=$("flipX").checked,flipY=$("flipY").checked,cal=getCal(),
+  spanX=Math.max(refBB.minX+refBB.w,1);
+  return (x,y)=>{let X=flipX?spanX-x:x,Y=flipY?matW-y:y;return [Math.round(X*spi*cal.x),Math.round(Y*spi*cal.y)];};}
+function hpglHeader(){let s="IN;SP1;";if($("sendVSFS").checked)s+=`VS${Math.max(1,parseInt($("speed").value))};FS${Math.max(1,parseInt($("force").value))};`;return s;}
+function hpglBody(lines,markBB,map){let s=hpglHeader();
+  if($("regMarks").checked)for(const seg of regMarkLines(markBB))s+=polyToHPGL(seg,map);
+  if($("weed").checked){const m=0.25,c=[[markBB.minX-m,markBB.minY-m],[markBB.minX+markBB.w+m,markBB.minY-m],[markBB.minX+markBB.w+m,markBB.minY+markBB.h+m],[markBB.minX-m,markBB.minY+markBB.h+m],[markBB.minX-m,markBB.minY-m]];s+=polyToHPGL(c,map);}
+  for(let line of lines)s+=polyToHPGL(withOvercut(line),map);
+  s+="PU0,0;SP0;";return s;}
+function generateHPGL(){const lines=allLines();if(!lines.length)return "";const bb=unionBBox();return hpglBody(lines,bb,hpglMap(bb));}
+
+/* ---- cut by colour: one pass of the blade per vinyl colour ----
+   Layers keep the job's shared origin, so every colour is cut against the
+   same reference frame: cut a layer, load the next colour, set the SAME
+   origin on the machine, and the layers stack in register. */
+function colorGroups(){const g=[],idx={};
+  for(const o of state.objects){const c=(o.color||"#111111").toLowerCase();
+    if(!(c in idx)){idx[c]=g.length;g.push({color:c,objs:[]});}
+    g[idx[c]].objs.push(o);}
+  return g;}
+function groupLines(grp){const out=[];for(const o of grp.objs)for(const l of objPolylines(o))out.push(l);return out;}
+function cutColorUI(doneUpTo){const g=colorGroups(),bb=unionBBox();
+  let rows="";
+  g.forEach((grp,i)=>{const pieces=grp.objs.length,state_=i<doneUpTo?"done":(i===doneUpTo?"now":"");
+    rows+='<div class="rowline '+state_+'"><span class="chip" style="background:'+grp.color+'"></span>'+
+      '<span class="grow"><b>'+(i+1)+". "+vinylName(grp.color)+' vinyl</b> — '+pieces+' piece'+(pieces>1?'s':'')+'</span>'+
+      (i<doneUpTo?'<span>✔ cut</span>':(i===doneUpTo?'<button class="blue" id="cutLayerBtn">✂ Cut this layer</button>':''))+
+      '</div>';});
+  const done=doneUpTo>=g.length;
+  showModal('<h2>Cut by color</h2>'+
+    '<p class="sub">One layer per vinyl color, all in registration. After each layer: unload, load the next color, and set the <b>same origin</b> on the cutter.</p>'+
+    rows+
+    (done?'<div class="note">All layers cut. Stack them in the order above (1 at the bottom) and the artwork lines up.</div>':'')+
+    '<div class="btns"><button id="pltColorsBtn">Download a .plt per color</button>'+
+    '<button onclick="closeModal()">'+(done?'Done':'Close')+'</button></div>');
+  $("pltColorsBtn").onclick=()=>{const map=hpglMap(bb);
+    g.forEach((grp,i)=>{const h=hpglBody(groupLines(grp),bb,map);
+      download("jzak-layer"+(i+1)+"-"+vinylName(grp.color).replace(/\s+/g,"")+".plt",h);});};
+  const btn=$("cutLayerBtn");
+  if(btn)btn.onclick=async()=>{
+    if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}
+    btn.disabled=true;btn.textContent="Cutting…";
+    try{await writeToCutter(hpglBody(groupLines(g[doneUpTo]),bb,hpglMap(bb)));}
+    catch(e){alert("Cut failed: "+(e.message||e));btn.disabled=false;btn.textContent="✂ Cut this layer";return;}
+    cutColorUI(doneUpTo+1);
+  };}
+function cutByColor(){if(!state.objects.length){alert("Add a design first.");return;}
+  const g=colorGroups();
+  if(g.length<2){alert("Everything on the mat is one color — the normal CUT button already does that job.");return;}
+  cutColorUI(0);}
+
+/* ---- tiling: a job taller than the roll splits into panels ----
+   Panels split ACROSS the material (the limited direction); length along the
+   feed is whatever the roll gives. Each panel repeats "overlap" inches of its
+   neighbour so the applied pieces can be lined up and the seam disappears. */
+function panelPlan(overlap){const bb=unionBBox(),matW=parseFloat($("matWidth").value||"24"),
+  usable=matW-0.5;                       /* quarter-inch margin each edge */
+  if(bb.h<=usable)return {bb,panels:[],usable,fits:true};
+  const step=usable-overlap,n=Math.max(2,Math.ceil((bb.h-overlap)/step)),panels=[];
+  for(let i=0;i<n;i++){const y0=bb.minY+i*step,y1=Math.min(y0+usable,bb.minY+bb.h);panels.push({y0,y1});if(y1>=bb.minY+bb.h)break;}
+  return {bb,panels,usable,fits:false};}
+function panelLines(p,bb){if(!clipReady())return null;
+  const rect=[[bb.minX-1,p.y0],[bb.minX+bb.w+1,p.y0],[bb.minX+bb.w+1,p.y1],[bb.minX-1,p.y1]];
+  const got=clipRun(ClipperLib.ClipType.ctIntersection,linesToClip(allLines()),linesToClip([rect.concat([rect[0]])]));
+  /* drop the panel to the material edge: its top rests at y=0.25 */
+  return clipToLines(got).map(l=>l.map(([x,y])=>[x,y-p.y0+0.25]));}
+function tilesUI(doneUpTo){const overlap=Math.max(0,parseFloat(($("tileOv")||{}).value||"0.5")),
+  plan=panelPlan(overlap);
+  if(plan.fits){showModal('<h2>Cut in panels</h2><p class="sub">No panels needed — this whole job fits your material ('+plan.usable.toFixed(1)+'" usable of '+$("matWidth").value+'").</p><div class="btns"><button onclick="closeModal()">Close</button></div>');return;}
+  let rows="";
+  plan.panels.forEach((p,i)=>{const st=i<doneUpTo?"done":(i===doneUpTo?"now":"");
+    rows+='<div class="rowline '+st+'"><span class="grow"><b>Panel '+(i+1)+' of '+plan.panels.length+'</b> — covers '+(p.y0-plan.bb.minY).toFixed(1)+'"–'+(p.y1-plan.bb.minY).toFixed(1)+'" of the design ('+(p.y1-p.y0).toFixed(1)+'" wide)</span>'+
+      (i<doneUpTo?'<span>✔ cut</span>':(i===doneUpTo?'<button class="blue" id="cutPanelBtn">✂ Cut this panel</button>':''))+'</div>';});
+  const done=doneUpTo>=plan.panels.length;
+  showModal('<h2>Cut in panels</h2>'+
+    '<p class="sub">The design is '+plan.bb.h.toFixed(1)+'" across — more than the '+plan.usable.toFixed(1)+'" your material gives. It splits into '+plan.panels.length+' panels; neighbouring panels repeat <b>'+overlap.toFixed(2)+'"</b> so you can line them up when applying.</p>'+
+    '<label>Overlap between panels (in)</label><input type="number" id="tileOv" step="0.25" min="0" value="'+overlap+'">'+
+    rows+
+    (done?'<div class="note">All panels cut. Apply panel 1, then line each next panel\'s repeated strip over the previous one.</div>':'<div class="note">Between panels: unload, load fresh vinyl, set origin as usual.</div>')+
+    '<div class="btns"><button id="pltPanelsBtn">Download a .plt per panel</button><button onclick="closeModal()">'+(done?'Done':'Close')+'</button></div>');
+  $("tileOv").onchange=()=>tilesUI(0);
+  $("pltPanelsBtn").onclick=()=>{plan.panels.forEach((p,i)=>{const ls=panelLines(p,plan.bb);if(!ls)return;
+    const pb=bboxOf(ls);download("jzak-panel"+(i+1)+".plt",hpglBody(ls,pb,hpglMap(plan.bb)));});};
+  const btn=$("cutPanelBtn");
+  if(btn)btn.onclick=async()=>{
+    if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}
+    btn.disabled=true;btn.textContent="Cutting…";
+    const ls=panelLines(plan.panels[doneUpTo],plan.bb);
+    if(!ls||!ls.length){alert("This panel came out empty — nothing to cut here.");tilesUI(doneUpTo+1);return;}
+    try{await writeToCutter(hpglBody(ls,bboxOf(ls),hpglMap(plan.bb)));}
+    catch(e){alert("Cut failed: "+(e.message||e));btn.disabled=false;btn.textContent="✂ Cut this panel";return;}
+    tilesUI(doneUpTo+1);
+  };}
+function cutTiles(){if(!state.objects.length){alert("Add a design first.");return;}tilesUI(0);}
+
+/* ---- calibration wizard: cut a known rectangle, type what you measured,
+   and the correction is worked out and remembered. ---- */
+function calibUI(){const c=getCal(),matW=parseFloat($("matWidth").value||"24"),
+  defW=10,defH=Math.min(5,Math.max(2,Math.floor(matW-2)));
+  showModal('<h2>Calibration wizard</h2>'+
+    '<p class="sub">Cuts a rectangle of an exact size; you measure it with a tape and type what you got. The correction is applied to every cut from then on and saved on this computer.</p>'+
+    '<div class="note">Current correction: feed '+(c.x*100).toFixed(2)+'% · across-roll '+(c.y*100).toFixed(2)+'%</div>'+
+    '<div style="display:flex;gap:14px;flex-wrap:wrap">'+
+    '<span><label>Rectangle length — along the feed (in)</label><input type="number" id="calW" step="0.5" min="2" value="'+defW+'"></span>'+
+    '<span><label>Rectangle width — across the roll (in)</label><input type="number" id="calH" step="0.5" min="1" value="'+defH+'"></span></div>'+
+    '<div class="btns"><button class="blue" id="calCutBtn">✂ 1. Cut the rectangle</button></div>'+
+    '<div style="display:flex;gap:14px;flex-wrap:wrap">'+
+    '<span><label>Measured length (in)</label><input type="number" id="calMW" step="0.01" placeholder="e.g. 10.06"></span>'+
+    '<span><label>Measured width (in)</label><input type="number" id="calMH" step="0.01" placeholder="e.g. 4.99"></span></div>'+
+    '<div class="btns"><button id="calResetBtn">Reset to 100%</button><button class="blue" id="calApplyBtn">2. Apply correction</button><button onclick="closeModal()">Close</button></div>');
+  $("calCutBtn").onclick=async()=>{
+    if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}
+    const w=parseFloat($("calW").value)||10,h=parseFloat($("calH").value)||4,o=0.5,
+      rect=[[o,o],[o+w,o],[o+w,o+h],[o,o+h],[o,o]],
+      map=hpglMap({minX:0,minY:0,w:o+w,h:o+h});
+    await writeToCutter(hpglHeader()+polyToHPGL(rect,map)+"PU0,0;SP0;");
+    alert("Rectangle sent. Measure the cut with a tape — both directions — then type the numbers below and Apply.");};
+  $("calApplyBtn").onclick=()=>{
+    const w=parseFloat($("calW").value)||10,h=parseFloat($("calH").value)||4,
+      mw=parseFloat($("calMW").value),mh=parseFloat($("calMH").value);
+    if(!(mw>0)||!(mh>0)){alert("Type both measured sizes first.");return;}
+    if(Math.abs(mw-w)/w>0.1||Math.abs(mh-h)/h>0.1){alert("That measurement is more than 10% off the target — double-check the numbers (and that you measured the right directions).");return;}
+    const cur=getCal();setCal(cur.x*(w/mw),cur.y*(h/mh));
+    const nc=getCal();
+    alert("Applied. Correction is now feed "+(nc.x*100).toFixed(2)+"% · across-roll "+(nc.y*100).toFixed(2)+"%.\nCut the rectangle once more to confirm it now measures dead on.");
+    calibUI();};
+  $("calResetBtn").onclick=()=>{setCal(1,1);calibUI();};}
+
 function testCutHPGL(){const spi=parseFloat($("stepsPerIn").value||"1016"),u=v=>Math.round(v*spi);let s="IN;SP1;";if($("sendVSFS").checked)s+=`VS${parseInt($("speed").value)};FS${parseInt($("force").value)};`;const o=0.25;s+=`PU${u(o)},${u(o)};PD${u(o+1)},${u(o)},${u(o+1)},${u(o+1)},${u(o)},${u(o+1)},${u(o)},${u(o)};`;s+=`PU${u(o+0.25)},${u(o+0.25)};PD${u(o+0.75)},${u(o+0.25)},${u(o+0.5)},${u(o+0.75)},${u(o+0.25)},${u(o+0.25)};`;s+="PU0,0;SP0;";return s;}
 function download(name,text,type){const b=new Blob([text],{type:type||"text/plain"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);}
 function exportSVG(){const lines=allLines();if(!lines.length){alert("Nothing to export.");return;}const bb=unionBBox(),paths=lines.map(l=>'<polyline fill="none" stroke="black" stroke-width="0.01in" points="'+l.map(([x,y])=>(x-bb.minX).toFixed(4)+","+(y-bb.minY).toFixed(4)).join(" ")+'"/>').join("\n");download("jzak-cut.svg",`<svg xmlns="http://www.w3.org/2000/svg" width="${bb.w.toFixed(3)}in" height="${bb.h.toFixed(3)}in" viewBox="0 0 ${bb.w.toFixed(3)} ${bb.h.toFixed(3)}">\n${paths}\n</svg>`,"image/svg+xml");}
@@ -10026,6 +10189,7 @@ const ACT={
   zin:()=>{view.zoom=Math.min(24,view.zoom*1.25);updZoom();draw();}, zout:()=>{view.zoom=Math.max(0.15,view.zoom/1.25);updZoom();draw();}, fit:()=>{resetView();draw();},
   grid:makeGrid, weed:()=>{$("weed").checked=!$("weed").checked;draw();}, reg:()=>{$("regMarks").checked=!$("regMarks").checked;draw();},
   connect:connect, send:async()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}await writeToCutter(h);}, test:async()=>{if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}await writeToCutter(testCutHPGL());},
+  cutcolor:cutByColor, tiles:cutTiles, calib:calibUI,
   viewhpgl:()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}const w=window.open("","_blank");w.document.write("<pre>"+h.replace(/;/g,";\n")+"</pre>");},
   about:()=>alert("JZAK Cuts — Vinyl Cutting Studio for JZac Designs.\nDesign, import, trace, and cut to your USCutter over USB (HPGL).")
 };
@@ -10072,7 +10236,7 @@ $("testBtn").onclick=()=>ACT.test();$("pltBtn").onclick=()=>ACT.plt();$("svgOutB
 
 /* ---- init ---- */
 window.addEventListener("resize",()=>{fitCanvas();draw();});
-checkSerial();fitCanvas();populateFonts();refreshAssets();refreshJobSelect();updZoom();setTool("select");
+checkSerial();fitCanvas();populateFonts();refreshAssets();refreshJobSelect();updZoom();updCalNote();setTool("select");
 buildText().then(()=>histReset()).catch(()=>histReset());draw();
 </script>
 </body>
