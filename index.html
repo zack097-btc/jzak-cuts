@@ -329,7 +329,8 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <h3>Cut / Plot — Material</h3>
       <label>Material preset</label>
       <select id="preset"><option value="">— choose —</option><option value="oracal651">Oracal 651 · calendered</option><option value="oracal751">Oracal 751 · cast</option><option value="htv">HTV (mirrors)</option><option value="reflective">Reflective</option><option value="sandblast">Sandblast / thick</option><option value="window">Window tint / thin</option></select>
-      <div class="row"><div><label>Vinyl width (in)</label><input type="number" id="matWidth" value="24" step="0.5" min="1"></div><div><label>Steps / inch</label><input type="number" id="stepsPerIn" value="1016" step="1" min="100"></div></div>
+      <div class="row"><div><label>Vinyl width (in)</label><input type="number" id="matWidth" value="24" step="0.5" min="1"></div><div><label>Vinyl length (in) — blank = auto</label><input type="number" id="matLen" step="0.5" min="1" placeholder="auto"></div></div>
+      <div class="row"><div><label>Steps / inch</label><input type="number" id="stepsPerIn" value="1016" step="1" min="100"></div><div></div></div>
       <div class="hint" id="calNote"></div>
     </div>
     <div class="grp">
@@ -9335,7 +9336,11 @@ function sampleQuad(p0,p1,p2,n){const o=[];for(let i=1;i<=n;i++){const t=i/n,m=1
 function bboxOf(subs){let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const sp of subs)for(const [x,y] of sp){if(x<a)a=x;if(y<b)b=y;if(x>c)c=x;if(y>d)d=y;}return {minX:a,minY:b,w:c-a,h:d-b};}
 
 /* ---- objects ---- */
-function addObject(subpaths,name,height){histPush();const bb=bboxOf(subpaths);let h=height;if(!h||h>40||h<0.2)h=(bb.h>0.2&&bb.h<40?bb.h:4);const o={id:nextId++,subpaths,bbox:bb,name:name||("object "+(state.objects.length+1)),posX:1,posY:1,height:h,width:bb.w*(h/(bb.h||1)),rotation:0,mirror:false,color:"#111111"};state.objects.push(o);state.selIds=[o.id];state.selId=o.id;setTool("select");renderObjList();syncInputs();resetView();draw();return o;}
+function addObject(subpaths,name,height){histPush();const bb=bboxOf(subpaths);
+  /* a design keeps whatever size it really is — six feet is six feet. Only a
+     nonsense size (a 2000px image "height", a degenerate speck) falls back to
+     a workable default. */
+  let h=height;if(!h||h>240||h<0.05)h=(bb.h>=0.05&&bb.h<=240?bb.h:4);const o={id:nextId++,subpaths,bbox:bb,name:name||("object "+(state.objects.length+1)),posX:1,posY:1,height:h,width:bb.w*(h/(bb.h||1)),rotation:0,mirror:false,color:"#111111"};state.objects.push(o);state.selIds=[o.id];state.selId=o.id;setTool("select");renderObjList();syncInputs();resetView();draw();return o;}
 function selected(){return state.objects.find(o=>o.id===state.selId)||null;}
 /* ---- multi-selection. state.selId is the PRIMARY (last-clicked) piece and is
    what the Size & Position panel edits; state.selIds is the whole set. ---- */
@@ -9752,7 +9757,14 @@ function fitCanvas(){const wt=cv.parentElement,r=wt.getBoundingClientRect(),dpr=
 function cssSize(){const dpr=window.devicePixelRatio||1;return {W:cv.width/dpr,H:cv.height/dpr};}
 function resetView(){view.zoom=1;view.panx=0;view.pany=0;updZoom();}
 function updZoom(){const t=Math.round(view.zoom*100)+"%";$("zoomLabel").textContent=t;$("zoomLabel2").textContent=t;}
-function layout(){const {W,H}=cssSize(),matW=parseFloat($("matWidth").value||"24"),bb=unionBBox(),viewLen=Math.max(24,Math.ceil((bb.minX+bb.w)+3)),availW=W-RL-MG,availH=H-RT-MG,base=Math.min(availW/viewLen,availH/matW);return {W,H,matW,viewLen,base};}
+function layout(){const {W,H}=cssSize(),matW=parseFloat($("matWidth").value||"24"),bb=unionBBox(),
+  /* the mat is as long as YOUR material says it is. Set Vinyl length and the
+     mat is exactly that; leave it blank and it sizes itself to the work. The
+     mat always grows to show everything, so nothing can hide off the end. */
+  setLen=parseFloat($("matLen").value),
+  need=Math.ceil((bb.minX+bb.w)+(bb.w>0?1:0)),
+  viewLen=setLen>0?Math.max(setLen,need):Math.max(24,need+2),
+  availW=W-RL-MG,availH=H-RT-MG,base=Math.min(availW/viewLen,availH/matW);return {W,H,matW,viewLen,base};}
 function regMarkLines(bb){const m=0.35,len=0.4,L=(x,y,dx,dy)=>[[[x,y],[x+dx*len,y]],[[x,y],[x,y+dy*len]]];let o=[];o=o.concat(L(bb.minX-m,bb.minY-m,1,1));o=o.concat(L(bb.minX+bb.w+m,bb.minY-m,-1,1));o=o.concat(L(bb.minX-m,bb.minY+bb.h+m,1,-1));return o;}
 function draw(){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany,matW=L.matW,viewLen=L.viewLen,bb=unionBBox();
   ctx.fillStyle="#8a8f96";ctx.fillRect(0,0,L.W,L.H);
@@ -10233,8 +10245,8 @@ function refreshAssets(){const a=lsGet("jzakcuts.assets"),sel=$("assetSelect"),c
 function saveAsset(){const o=selected();if(!o){alert("Select an object to save.");return;}const name=($("assetName").value||o.name||"design").trim(),a=lsGet("jzakcuts.assets");a[name]={subpaths:o.subpaths,bbox:o.bbox};lsSet("jzakcuts.assets",a);refreshAssets();$("assetSelect").value=name;$("assetName").value="";}
 function addAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("jzakcuts.assets");if(a[k]){const d=a[k];addObject(JSON.parse(JSON.stringify(d.subpaths)),k,d.bbox&&d.bbox.h<40?d.bbox.h:3);}}
 function delAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("jzakcuts.assets");delete a[k];lsSet("jzakcuts.assets",a);refreshAssets();}
-function jobSnapshot(){return {objects:state.objects.map(o=>({subpaths:o.subpaths,bbox:o.bbox,name:o.name,posX:o.posX,posY:o.posY,height:o.height,width:objWidth(o),rotation:o.rotation,mirror:o.mirror,color:o.color})),settings:{matWidth:$("matWidth").value,stepsPerIn:$("stepsPerIn").value,speed:$("speed").value,force:$("force").value,bladeOff:$("bladeOff").value,bladeComp:$("bladeComp").checked,flipX:$("flipX").checked,flipY:$("flipY").checked,weed:$("weed").checked,regMarks:$("regMarks").checked}};}
-function applySnapshot(j){if(!j||!j.objects){alert("That file isn't a JZAK Cuts job.");return;}histPush();state.objects=j.objects.map(o=>{const bb=o.bbox||bboxOf(o.subpaths),h=o.height||3;return {id:nextId++,subpaths:o.subpaths,bbox:bb,name:o.name||"object",posX:o.posX||1,posY:o.posY||1,height:h,width:(o.width!=null?o.width:bb.w*(h/(bb.h||1))),rotation:o.rotation||0,mirror:!!o.mirror,color:o.color||"#111"};});state.selIds=state.objects.length?[state.objects[0].id]:[];state.selId=state.selIds[0]||null;const st=j.settings||{},setIf=(id,v)=>{if(v!==undefined&&v!==null)$(id).value=v;};setIf("matWidth",st.matWidth);setIf("stepsPerIn",st.stepsPerIn);setIf("speed",st.speed);setIf("force",st.force);setIf("bladeOff",st.bladeOff);if(st.bladeComp!==undefined)$("bladeComp").checked=st.bladeComp;if(st.flipX!==undefined)$("flipX").checked=st.flipX;if(st.flipY!==undefined)$("flipY").checked=st.flipY;if(st.weed!==undefined)$("weed").checked=st.weed;if(st.regMarks!==undefined)$("regMarks").checked=st.regMarks;$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;$("frcOut").textContent=$("force").value;renderObjList();syncInputs();resetView();draw();}
+function jobSnapshot(){return {objects:state.objects.map(o=>({subpaths:o.subpaths,bbox:o.bbox,name:o.name,posX:o.posX,posY:o.posY,height:o.height,width:objWidth(o),rotation:o.rotation,mirror:o.mirror,color:o.color})),settings:{matWidth:$("matWidth").value,matLen:$("matLen").value,stepsPerIn:$("stepsPerIn").value,speed:$("speed").value,force:$("force").value,bladeOff:$("bladeOff").value,bladeComp:$("bladeComp").checked,flipX:$("flipX").checked,flipY:$("flipY").checked,weed:$("weed").checked,regMarks:$("regMarks").checked}};}
+function applySnapshot(j){if(!j||!j.objects){alert("That file isn't a JZAK Cuts job.");return;}histPush();state.objects=j.objects.map(o=>{const bb=o.bbox||bboxOf(o.subpaths),h=o.height||3;return {id:nextId++,subpaths:o.subpaths,bbox:bb,name:o.name||"object",posX:o.posX||1,posY:o.posY||1,height:h,width:(o.width!=null?o.width:bb.w*(h/(bb.h||1))),rotation:o.rotation||0,mirror:!!o.mirror,color:o.color||"#111"};});state.selIds=state.objects.length?[state.objects[0].id]:[];state.selId=state.selIds[0]||null;const st=j.settings||{},setIf=(id,v)=>{if(v!==undefined&&v!==null)$(id).value=v;};setIf("matWidth",st.matWidth);if(st.matLen!==undefined)$("matLen").value=st.matLen;setIf("stepsPerIn",st.stepsPerIn);setIf("speed",st.speed);setIf("force",st.force);setIf("bladeOff",st.bladeOff);if(st.bladeComp!==undefined)$("bladeComp").checked=st.bladeComp;if(st.flipX!==undefined)$("flipX").checked=st.flipX;if(st.flipY!==undefined)$("flipY").checked=st.flipY;if(st.weed!==undefined)$("weed").checked=st.weed;if(st.regMarks!==undefined)$("regMarks").checked=st.regMarks;$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;$("frcOut").textContent=$("force").value;renderObjList();syncInputs();resetView();draw();}
 function refreshJobSelect(){const jobs=lsGet("jzakcuts.jobs"),sel=$("jobSelect"),cur=sel.value;sel.innerHTML='<option value="">—</option>'+Object.keys(jobs).map(k=>`<option>${k.replace(/</g,"&lt;")}</option>`).join("");if(jobs[cur])sel.value=cur;}
 function saveJob(){const name=($("jobName").value||"").trim();if(!name){alert("Type a job name in the Job Library box first.");return;}if(!state.objects.length){alert("Add something to save.");return;}const jobs=lsGet("jzakcuts.jobs");jobs[name]=jobSnapshot();lsSet("jzakcuts.jobs",jobs);refreshJobSelect();$("jobSelect").value=name;$("jobName").value="";}
 function loadJob(){const k=$("jobSelect").value;if(!k){alert("Pick a saved job from the dropdown first.");return;}const jobs=lsGet("jzakcuts.jobs");if(jobs[k])applySnapshot(jobs[k]);}
@@ -10297,7 +10309,7 @@ $("mirror").onchange=()=>{histPush();editSel(o=>{o.mirror=$("mirror").checked;})
 document.querySelectorAll("#rotSeg button").forEach(b=>b.onclick=()=>{histPush();editSel(o=>{o.rotation=parseInt(b.dataset.rot);setRot(o.rotation);$("widthIn").value=objWidth(o).toFixed(2);});});
 $("rotDeg").oninput=()=>{histPush("rot");editSel(o=>{const v=parseFloat($("rotDeg").value);if(!isFinite(v))return;o.rotation=normDeg(v);document.querySelectorAll("#rotSeg button").forEach(b=>b.classList.toggle("on",Math.abs(parseInt(b.dataset.rot)-o.rotation)<0.001));});};
 $("rotReset").onclick=()=>{histPush();editSel(o=>{o.rotation=0;setRot(0);});};
-$("matWidth").oninput=draw;$("stepsPerIn").oninput=draw;$("weed").onchange=draw;$("flipX").onchange=draw;$("flipY").onchange=draw;$("regMarks").onchange=draw;$("bladeOff").oninput=draw;$("bladeComp").onchange=draw;
+$("matWidth").oninput=draw;$("matLen").oninput=draw;$("stepsPerIn").oninput=draw;$("weed").onchange=draw;$("flipX").onchange=draw;$("flipY").onchange=draw;$("regMarks").onchange=draw;$("bladeOff").oninput=draw;$("bladeComp").onchange=draw;
 $("preset").onchange=e=>applyPreset(e.target.value);
 $("speed").oninput=()=>{$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;};$("force").oninput=()=>{$("frcOut").textContent=$("force").value;};
 $("assetSave").onclick=saveAsset;$("assetAdd").onclick=addAsset;$("assetDel").onclick=delAsset;
