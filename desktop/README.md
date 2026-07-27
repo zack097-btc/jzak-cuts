@@ -37,7 +37,7 @@ bytes down a real tty and read them back out the other end.
 src-tauri/
   src/main.rs        the window, and the four serial commands
   Cargo.toml         dependencies — all MIT/Apache, nothing that limits resale
-  tauri.conf.json    window size, installer settings, icons
+  tauri.conf.json    installer settings, icons, bundle metadata
   capabilities/      what the window is permitted to do: the core set, nothing more
   icons/             cut from icon-512.png at build time (not committed)
 dist/                the studio, staged here at build time (not committed)
@@ -88,8 +88,15 @@ the repository's Actions tab whenever you want a fresh copy to try.
 
 ## Notes for later
 
-- The version lives in two places that must agree: `Cargo.toml` and
-  `tauri.conf.json`. Bump both, then tag the commit to match.
+- The version lives in three places that must agree: `Cargo.toml`,
+  `Cargo.lock` and `tauri.conf.json`. Bump all three, then tag the commit to
+  match.
+- The studio window is built in `main.rs`, not declared in `tauri.conf.json`,
+  and `app.windows` is deliberately left empty. A window that comes from the
+  config gets no new-window handler, and without one the web view refuses
+  every `window.open` — which is what would stop the tool panels from being
+  dragged onto a second monitor. Adding a window back to the config would
+  create a second, handler-less window at startup.
 - `app.security.csp` is deliberately `null`. The studio is one enormous inline
   script; a content security policy would refuse to run it.
 - There is no auto-update yet. Adding it means the Tauri updater plugin, a
