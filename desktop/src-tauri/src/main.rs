@@ -252,6 +252,36 @@ fn main() {
             write_port,
             close_port
         ])
+        // The studio window is built here rather than declared in tauri.conf.json
+        // for one reason: a window that comes from the config gets no new-window
+        // handler, and without one the web view refuses every window.open outright.
+        // That refusal is what would stop the shop from dragging the tool panels
+        // onto a second monitor, so the window has to be built in code where the
+        // handler can be attached to it.
+        .setup(|app| {
+            tauri::webview::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("JZAK Cuts — Vinyl Cutting Studio")
+            .inner_size(1440.0, 900.0)
+            .min_inner_size(1100.0, 720.0)
+            .resizable(true)
+            .maximizable(true)
+            .center()
+            .decorations(true)
+            // dropping a file on the canvas is handled by the page itself, so the
+            // shell must keep its hands off the drag events
+            .disable_drag_drop_handler()
+            // Let the tool-panel window through. It is our own page asking for a
+            // second view of itself; the default implementation gives back a real
+            // window in the same context, which is what lets a panel be moved into
+            // it and keep every listener it was wired with.
+            .on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow)
+            .build()?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("JZAK Cuts failed to start");
 }
