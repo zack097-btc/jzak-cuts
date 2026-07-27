@@ -145,7 +145,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     <hr><a data-act="grid">Make Grid (batch)</a><a data-act="weed">Toggle Weed Border</a><a data-act="reg">Toggle Registration Marks</a>
   </div></div>
   <div class="menu"><span>Cut</span><div class="submenu">
-    <a data-act="connect">Connect Cutter</a><a data-act="send">Send to Cutter</a><a data-act="test">Test Cut</a>
+    <a data-act="connect">Connect Cutter</a><a data-act="send">Send to Cutter</a><a data-act="test">Test Cut</a><a data-act="walk">Walk the Job Outline (no cutting)</a>
     <hr><a data-act="cutcolor">Cut by Color (layered vinyl)…</a><a data-act="tiles">Cut in Panels (bigger than the roll)…</a>
     <hr><a data-act="calib">Calibration Wizard…</a>
     <hr><a data-act="viewhpgl">View HPGL</a>
@@ -1437,7 +1437,28 @@ const ACT={
   offsetout:()=>offsetSel(1), offsetin:()=>offsetSel(-1),
   zin:()=>{view.zoom=Math.min(24,view.zoom*1.25);updZoom();draw();}, zout:()=>{view.zoom=Math.max(0.15,view.zoom/1.25);updZoom();draw();}, fit:()=>{resetView();draw();},
   grid:makeGrid, weed:()=>{$("weed").checked=!$("weed").checked;draw();}, reg:()=>{$("regMarks").checked=!$("regMarks").checked;draw();},
-  connect:connect, send:async()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}await writeToCutter(h);}, test:async()=>{if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}await writeToCutter(testCutHPGL());},
+  connect:connect, send:async()=>{const lines=allLines();if(!lines.length){alert("Add a design first.");return;}
+    /* the machine can't cut vinyl that isn't there: compare what the job
+       needs against the material sizes in the panel, and say so BEFORE the
+       blade moves instead of after the piece shoots off the rollers */
+    const bb=unionBBox(),rel=$("cutOrigin").checked,m=$("weed").checked?0.5:0,
+          needFeed=(rel?bb.w:bb.minX+bb.w)+m,needAcross=(rel?bb.h:bb.minY+bb.h)+m,
+          matL=parseFloat($("matLen").value)||0,matW=parseFloat($("matWidth").value||"24");
+    let warn="";
+    if(matL>0&&needFeed>matL+0.01)warn+="This job needs "+needFeed.toFixed(1)+'" of vinyl in the FEED direction, but Vinyl length is set to '+matL+'".\n';
+    if(needAcross>matW+0.01)warn+="This job needs "+needAcross.toFixed(1)+'" ACROSS the roll, but Vinyl width is set to '+matW+'".\n';
+    if(warn&&!confirm(warn+"\nCut anyway?"))return;
+    const h=generateHPGL();await writeToCutter(h);},
+  /* pen-up lap around the job's bounding box — watch where the head goes and
+     you know exactly where the cut will land before any cutting happens */
+  walk:async()=>{if(!state.connected){alert("Connect the cutter first (Cut \u25b8 Connect Cutter).");return;}
+    const lines=allLines();if(!lines.length){alert("Add a design first.");return;}
+    const bb=unionBBox(),map=hpglMap(bb),
+          cs=[[bb.minX,bb.minY],[bb.minX+bb.w,bb.minY],[bb.minX+bb.w,bb.minY+bb.h],[bb.minX,bb.minY+bb.h],[bb.minX,bb.minY]];
+    let sTxt="IN;";for(const p of cs){const[X,Y]=map(p[0],p[1]);sTxt+="PU"+X+","+Y+";";}
+    sTxt+="PU0,0;";
+    await writeToCutter(sTxt);
+    alert("The head just walked the outline of the job with the blade up. If it stayed on your vinyl the whole way round, the cut will too.");}, test:async()=>{if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}await writeToCutter(testCutHPGL());},
   cutcolor:cutByColor, tiles:cutTiles, calib:calibUI,
   viewhpgl:()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}const w=window.open("","_blank");w.document.write("<pre>"+h.replace(/;/g,";\n")+"</pre>");},
   about:()=>alert("JZAK Cuts — Vinyl Cutting Studio for JZac Designs.\nDesign, import, trace, and cut to your USCutter over USB (HPGL).")
