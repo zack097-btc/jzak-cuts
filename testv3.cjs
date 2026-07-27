@@ -14,6 +14,8 @@ const res=await p.evaluate(()=>{
   document.getElementById('weed').checked=false; document.getElementById('flipY').checked=true;
   document.getElementById('sendVSFS').checked=true; document.getElementById('speed').value='40'; document.getElementById('force').value='80';
   document.getElementById('bladeComp').checked=false; document.getElementById('regMarks').checked=false;
+  /* this regression string predates cut-relative origin, so pin absolute mat coords */
+  document.getElementById('cutOrigin').checked=false;
   out.singleHPGL=generateHPGL();
   // --- multi-object: add a second square, expect 2 PU/PD cut groups ---
   addObject([[[0,0],[100,0],[100,100],[0,100],[0,0]]],'sq2',1);
@@ -62,4 +64,5 @@ if(Math.abs(res.zoomFit-1)>0.001) a.push('zoom fit wrong');
 console.log(a.length?'FAIL: '+a.join(' | '):'ALL V3 CHECKS PASSED');
 console.log('JS errors:', errors.length?errors.join(' | '):'none');
 await b.close();
+process.exit((a.length||errors.length)?1:0);
 })();

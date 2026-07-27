@@ -64,7 +64,7 @@ GitHub Pages serves over HTTPS, which the Web Serial API requires, so the cutter
 
 ## What it does (v10)
 
-Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (**JZAK Trace**, our own engine — true Bézier curves, sub-pixel accurate, offline) · **color trace** — colored artwork separates into one layer per vinyl color automatically, every layer in perfect registration · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **weld / subtract / overlap / exclude** shape algebra · **offset contour cuts** (sticker borders and inline shrinks, round · sharp · clipped corners) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
+Text-to-cut with **your fonts built in** · **upload any file to cut or trace** · **pro image tracing** (**JZAK Trace**, our own engine — true Bézier curves, sub-pixel accurate, offline) · **live trace preview with photo filters** (brightness, contrast, blur, sharpen, drop-the-background, despeckle) · **color trace** — colored artwork separates into one layer per vinyl color automatically, every layer in perfect registration · **point/node editor** (Silhouette-style: drag anchors & handles, corner ↔ smooth points, add/delete points) with a **Point Editor panel** — typed X/Y, break/close/reverse a path, and **curve-preserving Simplify** · **detachable tool panels** you can drag onto a second monitor · **SVG & DXF import** as exact vectors · **free rotate to any angle** + **8-handle resize** (corners scale, sides stretch) · **multi-select** (shift-click or drag a marquee) with **group move, group scale and group rotate** · **align, distribute & arrange** (six aligns, even-gap spacing, front/back stacking) · **weld / subtract / overlap / exclude** shape algebra · **offset contour cuts** (sticker borders and inline shrinks, round · sharp · clipped corners) · **multi-object layout** (add many pieces, click to select, drag to move) · **grid copies** to batch a run · **saved designs library** + **saved job library** (in-browser, `.json` export/import) · **canvas zoom & pan** · **undo/redo (80 steps)** · **keyboard shortcuts** (nudge, copy/paste, duplicate, delete, stacking) · **installable app (PWA)** that runs offline · **blade-offset / corner-overcut compensation** · **material presets** · **registration marks** for print-and-cut · weed border · HPGL over Web Serial · `.plt`/`.svg` export · test cut.
 
 ### The tracing engine (JZAK Trace)
 
@@ -96,6 +96,22 @@ Tracing turns a *picture* into cut lines — it's only ever as sharp as the imag
 ### Point / node editing (the ✎ tool)
 
 Select a traced or imported object, pick the **✎ Edit points** tool, and you get real vector node editing: **green squares** are corner points, **blue circles** are smooth/curve points. Drag a point to move it; drag its **handles** to reshape the curve (smooth points keep their handles aligned like Silhouette); **double-click a point** to switch it between corner and smooth; **double-click a line** to add a point; press **Delete** to remove the selected point. Every edit updates the cut path live.
+
+**The Point Editor panel** opens beside the mat with the ✎ tool and gives you the same edits without the mouse gymnastics. It tells you which point you are on ("point 14 of 220"), steps to the next or previous one, and takes a **typed X / Y in inches** so a point can be put exactly where the drawing says rather than where your hand landed. From there: corner ↔ smooth, straight ↔ curved segment, add or delete a point, break the path open, close it again, reverse its direction, and smooth or corner every point in one go.
+
+**Simplify** is the one to reach for after a trace. Drag the tolerance and it throws away the points a shape does not need, then **re-fits a true Bézier curve** through the ones that survive — so a circle traced at 220 points comes back at about 32 and is still round to five thousandths of an inch, while a rectangle traced at 160 points comes back at 4 points with dead-straight sides and no handles at all. That is the difference between simplifying and the usual point-dropping, which quietly turns curves into polygons. Simplify this path or every path, and it is a single undo either way.
+
+### Tracing a photo (the trace station)
+
+Load a photo — drag it in or use **Import** — and the trace panel stays open with a **live preview** beside the controls, so you tune the trace while looking at what you are about to cut instead of tracing, undoing, and tracing again. Flip the preview between the **result** (the actual cut lines, in the colors they will be cut in, with a point count) and the **filtered photo** so you can see what the filters did to the picture.
+
+The filters are **brightness**, **contrast**, **blur** (for scanner grain and JPEG mush), **sharpen** (an unsharp mask, for a soft or slightly out-of-focus logo) and **drop the background**, which reads the four corners of the photo, decides what the backdrop is, and whitens everything close enough to it so the tracer ignores it — with a tolerance slider for how close counts. **Despeckle** throws away any loop smaller than the pixel count you set, which is what kills dust, JPEG confetti and the little islands nobody wants to weed. Nothing is ever written back onto the photo you loaded, so **Reset filters** always returns you to the original, and the real trace is always run at full resolution even though the preview is computed on a small copy to keep the sliders instant.
+
+**Re-trace** stays in the station so you can keep tuning. **Place on Mat** is the one that hands you back to the mat with the layers placed.
+
+### Two monitors
+
+Every section of the tool dock has a small **⧉** in its heading. Click it and that section moves to a **Tools window** you can drag onto your other monitor — the mat gets the whole main screen while Cut Settings, the Point Editor and the Job Library live over there. It is one Tools window, not one per panel, and the panels are *moved* rather than copied, so a slider over there drives the same job as before, with no second copy of anything to get out of step. Click the **⧉** again (or **Bring back**, in the gap it left behind) to return a panel; closing the Tools window sends every panel home at once. The layout is remembered, and comes back on your next click when you reopen the studio.
 
 ### Rotating & resizing on the mat
 
@@ -210,6 +226,16 @@ They cover tracing accuracy, node editing, rotation, alignment, welding,
 undo/redo, the PWA, the font loader, and both halves of the serial layer. Each
 one prints `PASS`/`FAIL` lines and finishes with a summary. The Rust half of
 the serial layer has its own tests — `cargo test` from `desktop/src-tauri`.
+
+Three of them are worth knowing by name: `teststation.cjs` loads a grubby photo
+and proves the trace panel stays put while the filters and despeckle actually
+change the cut; `testptpanel.cjs` drives every button in the Point Editor and
+holds Simplify to a measured deviation from a true circle and a true rectangle;
+and `testdetach.cjs` opens the real second window, checks a panel *moves* there
+rather than being copied, that a control over there still drives the job here,
+and that closing the window brings every panel home. `testpwa.cjs` is the one
+exception to running straight from disk — it needs a static server on port 8099
+(`python3 -m http.server 8099`) because service workers refuse `file://`.
 
 Run the whole suite before shipping a build:
 

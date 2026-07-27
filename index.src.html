@@ -69,7 +69,42 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
   canvas{display:block;width:100%;height:100%}
   .dock{width:300px;background:var(--chrome);border-left:1px solid var(--line);overflow-y:auto;padding:10px}
   .grp{background:#f4f4f4;border:1px solid var(--line);border-radius:7px;padding:10px;margin-bottom:10px}
-  .grp h3{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+  .grp h3{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:6px}
+  /* every dock section can be sent to a second window on another monitor */
+  .grp h3 .dtch{margin-left:auto;width:22px;height:18px;padding:0;font-size:11px;line-height:1;border-radius:4px;background:#ececec;border:1px solid var(--line);color:#5b6675;opacity:.5;flex:0 0 auto}
+  .grp h3 .dtch:hover{opacity:1;background:#fff;border-color:#8fb4f0;color:var(--accent)}
+  .grp.out{border-color:#8fb4f0;box-shadow:0 0 0 1px #d5e4fb inset}
+  .popdock{margin:0;background:var(--chrome);color:var(--ink);font:13px/1.45 "Segoe UI",-apple-system,Roboto,Helvetica,Arial,sans-serif;display:flex;flex-direction:column;height:100%}
+  .popbar{display:flex;align-items:center;gap:8px;background:var(--chrome2);border-bottom:1px solid var(--line);padding:5px 8px;font-size:12px}
+  .popbar b span{color:var(--accent)}
+  .popbar button{padding:3px 8px;font-size:11.5px}
+  .popHost{flex:1;overflow-y:auto;padding:10px}
+  .popHost .grp:last-child{margin-bottom:0}
+  .popEmpty{color:var(--muted);font-size:11.5px;padding:10px 4px;display:flex;align-items:center;gap:8px;
+            border:1px dashed var(--line2);border-radius:6px;background:transparent}
+  .popEmpty span{flex:1}
+  .popEmpty button{padding:3px 8px;font-size:11px}
+  /* the little ⧉ that sends a dock section to the other monitor */
+  h3 .popbtn{float:right;margin:-2px -2px 0 0;padding:1px 6px;font-size:12px;line-height:1.25;
+             background:transparent;border:1px solid transparent;color:var(--muted);cursor:pointer;border-radius:4px}
+  h3 .popbtn:hover{background:var(--chrome2);border-color:var(--line);color:var(--fg)}
+  h3 .popbtn.out{color:var(--accent);border-color:var(--line)}
+  /* trace station: live preview + sub-headings */
+  .tpv{background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:8px 0 6px}
+  .tpv canvas{display:block;width:100%;height:auto;background:
+      repeating-conic-gradient(#eef1f4 0% 25%,#ffffff 0% 50%) 50%/14px 14px}
+  .tpvbar{display:flex;align-items:center;gap:6px;padding:3px 7px;border-top:1px solid var(--line);background:var(--chrome2);font-size:10.5px;color:var(--muted)}
+  .tpv.busy{opacity:.55}
+  h4.subh{margin:12px 0 2px;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;border-top:1px solid var(--line2);padding-top:9px}
+  h4.subh span{text-transform:none;letter-spacing:0;font-weight:400;color:#8b939d}
+  /* point editor */
+  .ptbar{display:flex;align-items:center;gap:5px;margin:2px 0 6px}
+  .ptbar button{padding:4px 8px;font-size:12px;line-height:1}
+  .ptbar .ptwho{flex:1;text-align:center;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .ngrid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin:4px 0}
+  .ngrid.three{grid-template-columns:repeat(3,1fr)}
+  .ngrid button{padding:6px 4px;font-size:11.5px;line-height:1.15}
+  .ngrid button:disabled{opacity:.35;cursor:default}
   label{display:block;font-size:11.5px;color:var(--muted);margin:7px 0 3px}
   input[type=text],input[type=number],select,textarea{width:100%;background:#fff;border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:6px 8px;font:inherit}
   textarea{resize:vertical;min-height:46px}
@@ -150,6 +185,12 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     <hr><a data-act="calib">Calibration Wizard…</a>
     <hr><a data-act="viewhpgl">View HPGL</a>
   </div></div>
+  <div class="menu"><span>View</span><div class="submenu">
+    <a data-act="popall">Send All Tool Panels to Second Monitor</a>
+    <a data-act="popnone">Bring All Tool Panels Back</a>
+    <hr><a data-act="popwin">Open / Focus the Tools Window</a>
+    <hr><a data-act="nodetool">Edit Points (wireframe editor)</a>
+  </div></div>
   <div class="menu"><span>Help</span><div class="submenu"><a data-act="about">About JZAK Cuts</a></div></div>
   <div class="menuspacer"></div>
   <div class="status-conn"><div class="dot" id="dot"></div><span id="statusText">Cutter not connected</span></div>
@@ -194,7 +235,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
   <div class="worktable"><canvas id="cv"></canvas></div>
 
   <!-- DOCK -->
-  <div class="dock">
+  <div class="dock" id="dock">
     <div class="warnbar" id="serialWarn"></div>
 
     <!-- TEXT panel -->
@@ -216,6 +257,10 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <label>Any file — vector, image, or Silhouette</label>
       <input type="file" id="vecFile" accept=".svg,.dxf,.png,.jpg,.jpeg,.gif,.bmp,.webp,.studio,.studio3">
       <div id="traceCtl" style="display:none">
+        <div class="tpv"><canvas id="tracePrev" width="280" height="170"></canvas>
+          <div class="tpvbar"><span id="tracePrevWhat">Traced result</span><span class="menuspacer" style="flex:1"></span><span id="tracePrevInfo">—</span></div>
+        </div>
+        <div class="seg" style="margin-bottom:6px"><button id="tpvResult" class="on">Result</button><button id="tpvPhoto">Photo</button></div>
         <label>Trace mode</label>
         <select id="traceMode">
           <option value="auto">Auto (best for the art)</option>
@@ -239,9 +284,71 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
         </div>
         <label>Smoothing <span id="smV"></span></label>
         <div class="rng"><input type="range" id="smooth" min="0" max="8" value="3"><span class="val" id="smOut">3</span></div>
-        <div class="btns"><button id="retraceBtn" class="blue" style="flex:1">Re-trace</button></div>
+        <label>Despeckle — drop specks smaller than <span id="dsV"></span></label>
+        <div class="rng"><input type="range" id="despeckle" min="0" max="60" value="2"><span class="val" id="dsOut">2</span></div>
+
+        <h4 class="subh" id="tfHead">Photo filters <span id="tfState"></span></h4>
+        <div id="traceFilters">
+          <label>Brightness <span id="brV"></span></label>
+          <div class="rng"><input type="range" id="tfBright" min="-100" max="100" value="0"><span class="val" id="brOut">0</span></div>
+          <label>Contrast <span id="ctV"></span></label>
+          <div class="rng"><input type="range" id="tfContrast" min="-100" max="100" value="0"><span class="val" id="ctOut">0</span></div>
+          <label>Denoise / blur <span id="blV"></span></label>
+          <div class="rng"><input type="range" id="tfBlur" min="0" max="6" value="0"><span class="val" id="blOut">0</span></div>
+          <label>Sharpen edges <span id="shV"></span></label>
+          <div class="rng"><input type="range" id="tfSharp" min="0" max="100" value="0"><span class="val" id="shOut">0</span></div>
+          <div class="chk"><input type="checkbox" id="tfKillBg"><label for="tfKillBg" style="margin:0">Drop the background color</label></div>
+          <div id="tfBgRow" style="display:none">
+            <label>How close a match counts <span id="bgV"></span></label>
+            <div class="rng"><input type="range" id="tfBgTol" min="2" max="60" value="18"><span class="val" id="bgOut">18</span></div>
+          </div>
+          <div class="btns"><button id="tfReset" style="flex:1">Reset filters</button></div>
+        </div>
+        <div class="btns"><button id="retraceBtn" class="blue" style="flex:1">Re-trace</button><button id="tracePlaceBtn" class="green" style="flex:1">Place on Mat</button></div>
+        <div class="hint">The preview retraces as you drag. <b>Despeckle</b> throws away dust and scanner grain; <b>Denoise</b> softens JPEG mush before the edges are found; <b>Drop the background color</b> knocks out the paper or backdrop the art was shot on.</div>
       </div>
       <div class="hint">SVG/DXF as vectors. Silhouette <b>.studio3</b> imports its real cut lines as exact vectors — no tracing. Images are auto-traced — colored art comes in as one layer per vinyl color, in registration. (PDF/AI: export to SVG/PNG first.)</div>
+    </div>
+
+    <!-- POINT EDITOR panel -->
+    <div class="grp" id="panelNode" style="display:none">
+      <h3>Point Editor</h3>
+      <div class="ptbar">
+        <button id="ndPrev" title="Previous point">◀</button>
+        <span class="ptwho" id="ndWho">no point selected</span>
+        <button id="ndNext" title="Next point">▶</button>
+      </div>
+      <div class="row">
+        <div><label>X (in)</label><input type="number" id="ndX" step="0.01"></div>
+        <div><label>Y (in)</label><input type="number" id="ndY" step="0.01"></div>
+      </div>
+      <label>Point type</label>
+      <div class="seg"><button id="ndCorner">■ Corner</button><button id="ndSmooth">● Smooth</button></div>
+      <label>The line leaving this point</label>
+      <div class="seg"><button id="ndSegLine">Straight</button><button id="ndSegCurve">Curved</button></div>
+      <label>Points</label>
+      <div class="ngrid">
+        <button id="ndAdd">＋ Add point after</button>
+        <button id="ndDel">✕ Delete point</button>
+      </div>
+      <label>This path</label>
+      <div class="ngrid three">
+        <button id="ndBreak" title="Split the outline open at this point">Break here</button>
+        <button id="ndClose" title="Close or open the outline">Close path</button>
+        <button id="ndReverse" title="Reverse the cutting direction">Reverse</button>
+      </div>
+      <div class="ngrid">
+        <button id="ndSmoothAll" title="Give every point on this path curve handles">Smooth whole path</button>
+        <button id="ndCornerAll" title="Strip the curve handles off this path">Corner whole path</button>
+      </div>
+      <label>Simplify — drop points closer than <span id="ndTolV">0.010"</span></label>
+      <div class="rng"><input type="range" id="ndTol" min="1" max="100" value="10"><span class="val" id="ndTolOut">.010</span></div>
+      <div class="ngrid">
+        <button id="ndSimpPath">Simplify this path</button>
+        <button id="ndSimpAll">Simplify all paths</button>
+      </div>
+      <div class="selcount" id="ndStats" style="margin-top:8px">—</div>
+      <div class="hint">Drag a point to move it, drag its blue handles to bend the line. Double-click a point to switch <b>corner ↔ smooth</b>, double-click a line to drop a new point in, <b>Delete</b> removes the selected one. Every change is undoable (Ctrl+Z).</div>
     </div>
 
     <!-- SELECT / properties panel -->
@@ -256,7 +363,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       </div>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="panelArrange">
       <h3>Arrange &amp; Align</h3>
       <div class="selcount" id="selCount">Nothing selected</div>
       <label>Align <span style="color:#888;font-weight:400">(to each other · to the mat when one is selected)</span></label>
@@ -283,7 +390,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <div style="font-size:11px;color:#888">Shift-click or drag a box on the mat to select several · Ctrl+A selects all</div>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="panelShape">
       <h3>Weld, Shape &amp; Offset</h3>
       <label>Combine <span style="color:#888;font-weight:400">(overlaps become one cut line)</span></label>
       <div class="agrid four" id="boolGrid">
@@ -305,7 +412,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <div style="font-size:11px;color:#888">Outward is the sticker/decal border. The contour drops in behind the artwork as its own piece, so it cuts first and can carry its own colour.</div>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="panelSizePos">
       <h3>Selected — Size &amp; Position</h3>
       <div class="row"><div><label>Width (in)</label><input type="number" id="widthIn" value="0" step="0.1" min="0.1"></div><div><label>Height (in)</label><input type="number" id="heightIn" value="3" step="0.1" min="0.1"></div></div>
       <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;margin:2px 0 4px;color:#444"><input type="checkbox" id="lockAspect" checked style="width:auto;margin:0"> Lock aspect ratio <span style="color:#888">(uncheck to stretch W &amp; H separately)</span></label>
@@ -317,7 +424,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <div class="chk"><input type="checkbox" id="mirror"><label for="mirror" style="margin:0">Mirror (HTV)</label></div>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="panelAssets">
       <h3>Saved Designs</h3>
       <div class="row" style="align-items:flex-end"><div><label>Save selected as</label><input type="text" id="assetName" placeholder="name"></div><div style="flex:0 0 auto"><button id="assetSave">Save</button></div></div>
       <label>Library</label><select id="assetSelect"><option value="">—</option></select>
@@ -325,7 +432,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     </div>
 
     <!-- CUT / PLOT panel (always visible) -->
-    <div class="grp">
+    <div class="grp" id="panelMaterial">
       <h3>Cut / Plot — Material</h3>
       <label>Material preset</label>
       <select id="preset"><option value="">— choose —</option><option value="oracal651">Oracal 651 · calendered</option><option value="oracal751">Oracal 751 · cast</option><option value="htv">HTV (mirrors)</option><option value="reflective">Reflective</option><option value="sandblast">Sandblast / thick</option><option value="window">Window tint / thin</option></select>
@@ -333,7 +440,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <div class="row"><div><label>Steps / inch</label><input type="number" id="stepsPerIn" value="1016" step="1" min="100"></div><div></div></div>
       <div class="hint" id="calNote"></div>
     </div>
-    <div class="grp">
+    <div class="grp" id="panelCutSet">
       <h3>Cut Settings</h3>
       <label>Speed <span id="spdV">40</span></label>
       <div class="rng"><input type="range" id="speed" min="1" max="80" value="40"><span class="val" id="spdOut">40</span></div>
@@ -343,7 +450,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <label>Blade offset / overcut (mm)</label><input type="number" id="bladeOff" value="0.25" step="0.05" min="0">
       <div class="chk"><input type="checkbox" id="bladeComp" checked><label for="bladeComp" style="margin:0">Corner overcut compensation</label></div>
     </div>
-    <div class="grp">
+    <div class="grp" id="panelOutput">
       <h3>Output</h3>
       <div class="chk"><input type="checkbox" id="cutOrigin" checked><label for="cutOrigin" style="margin:0">Start cut at the blade (ignore mat position)</label></div>
       <div class="chk"><input type="checkbox" id="flipX"><label for="flipX" style="margin:0">Flip feed (X)</label></div>
@@ -352,7 +459,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <div class="chk"><input type="checkbox" id="regMarks"><label for="regMarks" style="margin:0">Registration marks</label></div>
       <div class="btns"><button id="testBtn" style="flex:1">Test Cut</button><button id="pltBtn" style="flex:1">.plt</button><button id="svgOutBtn" style="flex:1">SVG</button><button id="hpglBtn" style="flex:1">HPGL</button></div>
     </div>
-    <div class="grp">
+    <div class="grp" id="panelJobs">
       <h3>Job Library</h3>
       <div class="row" style="align-items:flex-end"><div><label>Save current as</label><input type="text" id="jobName" placeholder="job name"></div><div style="flex:0 0 auto"><button id="jobSave">Save</button></div></div>
       <label>Saved jobs</label><select id="jobSelect"><option value="">—</option></select>
@@ -381,7 +488,14 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
 <script>
 /* ============================ JZAK Cuts v5 (VinylMaster-style) ============================ */
 const FONT_BASE="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/";
-const $=id=>document.getElementById(id);
+/* Tool panels can be sent to a second window on another monitor. When that
+   happens the panel's DOM moves out of this document, so every lookup has to
+   be willing to look next door as well. One JS context still owns both
+   windows, so every listener wired at startup keeps working after the move.
+   POPW must be declared right here — $() is called during startup. */
+const POPW={win:null,mode:null,ids:[],timer:null};
+const $=id=>{const e=document.getElementById(id);if(e)return e;
+  const w=POPW.win;if(w&&!w.closed&&w.document)return w.document.getElementById(id);return null;};
 const state={objects:[],selId:null,selIds:[],port:null,writer:null,connected:false,tool:"select"};
 const view={zoom:1,panx:0,pany:0};
 let nextId=1;
@@ -691,6 +805,12 @@ document.body.removeChild(holder);if(!subs.length){alert("No cuttable paths foun
 function parseDXF(text){const rows=text.split(/\r\n|\r|\n/),pairs=[];for(let i=0;i+1<rows.length;i+=2)pairs.push([parseInt(rows[i].trim(),10),rows[i+1].trim()]);const ents=[];let cur=null;for(const [code,val] of pairs){if(isNaN(code))continue;if(code===0){if(cur)ents.push(cur);cur={type:val,c:{}};}else if(cur){(cur.c[code]=cur.c[code]||[]).push(val);}}if(cur)ents.push(cur);const n=v=>parseFloat(v),subs=[];let poly=null;for(const e of ents){const c=e.c;if(e.type==="LINE"&&c[10]&&c[11])subs.push([[n(c[10][0]),-n(c[20][0])],[n(c[11][0]),-n(c[21][0])]]);else if(e.type==="LWPOLYLINE"&&c[10]){const xs=c[10],ys=c[20]||[],p=[];for(let i=0;i<xs.length;i++)p.push([n(xs[i]),-n(ys[i]||0)]);if(c[70]&&(parseInt(c[70][0],10)&1)&&p.length)p.push(p[0].slice());if(p.length>1)subs.push(p);}else if(e.type==="CIRCLE"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]),p=[];for(let i=0;i<=64;i++){const a=i/64*2*Math.PI;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="ARC"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]);let a0=n(c[50][0]),a1=n(c[51][0]);if(a1<a0)a1+=360;const st=Math.max(8,Math.round((a1-a0)/5)),p=[];for(let i=0;i<=st;i++){const a=(a0+(a1-a0)*i/st)*Math.PI/180;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="POLYLINE")poly=[];else if(e.type==="VERTEX"&&poly&&c[10])poly.push([n(c[10][0]),-n(c[20][0])]);else if(e.type==="SEQEND"){if(poly&&poly.length>1)subs.push(poly);poly=null;}}return subs;}
 function importDXF(file){const r=new FileReader();r.onload=()=>{try{const subs=parseDXF(r.result);if(!subs.length){alert("No cuttable entities found in that DXF.");return;}const bb=bboxOf(subs);addObject(subs,file.name,bb.h);}catch(e){alert("DXF import failed: "+(e.message||e));}};r.readAsText(file);}
 let traceData=null,lastTraceId=null,lastTraceIds=null;
+/* traceSource is the photo exactly as it came in and is never written to;
+   every filter run builds a fresh copy from it, so sliders can go back and
+   forth all day without the picture slowly rotting. tracePrevSrc is a small
+   copy the live preview traces, which is what keeps the sliders responsive on
+   a 12-megapixel phone photo. */
+let traceSource=null,tracePrevSrc=null;
 function otsuThreshold(idata){const hist=new Array(256).fill(0),d=idata.data;for(let i=0;i<d.length;i+=4){hist[Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])]++;}const total=d.length/4;let sum=0;for(let t=0;t<256;t++)sum+=t*hist[t];let sumB=0,wB=0,max=0,thr=128;for(let t=0;t<256;t++){wB+=hist[t];if(!wB)continue;const wF=total-wB;if(!wF)break;sumB+=t*hist[t];const mB=sumB/wB,mF=(sum-sumB)/wF,between=wB*wF*(mB-mF)*(mB-mF);if(between>max){max=between;thr=t;}}return Math.min(253,Math.max(2,thr));}
 /* The picture is traced at the size it arrived. Blowing it up first was only
    ever a crutch for a black-and-white tracer: enlarging invents no detail, and
@@ -698,11 +818,16 @@ function otsuThreshold(idata){const hist=new Array(256).fill(0),d=idata.data;for
    same edge either way — just five times faster and with a fraction of the
    nodes to edit. Very large pictures are still brought down, because past a
    point the extra pixels are only grain. */
-function loadImageForTrace(url){const img=new Image();img.onload=()=>{URL.revokeObjectURL(url);const maxD=4000,sc=Math.min(1,maxD/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc)),c=document.createElement("canvas");c.width=w;c.height=h;const cx=c.getContext("2d");cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality="high";cx.fillStyle="#fff";cx.fillRect(0,0,w,h);cx.drawImage(img,0,0,w,h);traceData=cx.getImageData(0,0,w,h);setTool("import");
+function loadImageForTrace(url){const img=new Image();img.onload=()=>{URL.revokeObjectURL(url);const maxD=4000,sc=Math.min(1,maxD/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc)),c=document.createElement("canvas");c.width=w;c.height=h;const cx=c.getContext("2d");cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality="high";cx.fillStyle="#fff";cx.fillRect(0,0,w,h);cx.drawImage(img,0,0,w,h);traceSource=cx.getImageData(0,0,w,h);traceData=traceSource;
+  tracePrevSrc=downscaleImageData(traceSource,900);
+  traceFiltersReset(true);
+  setTool("import");
   $("smV").textContent="("+$("smooth").value+")";$("smOut").textContent=$("smooth").value;
+  $("dsOut").textContent=$("despeckle").value;$("dsV").textContent="("+$("despeckle").value+" px)";
   const thr=otsuThreshold(traceData);$("thresh").value=thr;$("thOut").textContent=thr;$("thV").textContent="("+thr+")";
   let dk=0;const dd=traceData.data;for(let i=0;i<dd.length;i+=4){if(0.299*dd[i]+0.587*dd[i+1]+0.114*dd[i+2]<thr)dk++;}$("traceInvert").checked=(dk/(dd.length/4))>0.5;
-  $("traceCtl").style.display="";$("traceMode").value="auto";$("traceColors").value="0";traceModeUI();lastTraceId=null;lastTraceIds=null;traceRun(false);};img.onerror=()=>alert("Couldn't read that image.");img.src=url;}
+  $("traceCtl").style.display="";$("traceMode").value="auto";$("traceColors").value="0";traceModeUI();lastTraceId=null;lastTraceIds=null;
+  tracePreviewRender();traceRun(false,true);};img.onerror=()=>alert("Couldn't read that image.");img.src=url;}
 function extractLargestPNG(buf){const u=new Uint8Array(buf),sig=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a];let best=null;for(let i=0;i+8<u.length;i++){let m=true;for(let k=0;k<8;k++)if(u[i+k]!==sig[k]){m=false;break;}if(!m)continue;let end=-1;for(let j=i+8;j+8<=u.length;j++){if(u[j]===0x49&&u[j+1]===0x45&&u[j+2]===0x4e&&u[j+3]===0x44){end=j+8;break;}}if(end>0){if(!best||end-i>best.len)best={s:i,e:end,len:end-i};i=end;}}return best?u.slice(best.s,best.e):null;}
 /* Read the CUT GEOMETRY straight out of a .studio3 — the exact anchor points
    and Bezier handles Silhouette saved, in millimetres. No tracing, so the
@@ -867,11 +992,11 @@ function vinylName(hex){const m=/^#([0-9a-f]{6})$/i.exec(hex||"");if(!m)return "
 function dispColor(c){if(!c)return "#111";const m=/^#([0-9a-f]{6})$/i.exec(c);if(!m)return c;
   const v=parseInt(m[1],16),r=v>>16,g=(v>>8)&255,b=v&255;
   return (0.299*r+0.587*g+0.114*b)>232?"#b9c1cb":c;}
-function traceModeUI(){const m=$("traceMode").value;$("traceColorRows").style.display=(m==="bw")?"none":"";$("traceBWRows").style.display=(m==="bw")?"":"none";}
+function traceModeUI(){const m=$("traceMode").value;$("traceColorRows").style.display=(m==="bw")?"none":"";$("traceBWRows").style.display=(m==="bw")?"":"none";tracePreviewSoon();}
 /* Every layer of one trace shares the SAME bounding box — the whole picture —
    and the same position and size, so the colors sit in perfect registration on
    the mat: cut each color on its vinyl, stack them, and the art lines up. */
-function placeTraceLayers(layers,replace){const W=traceData.width,H=traceData.height,bb={minX:0,minY:0,w:W,h:H};
+function placeTraceLayers(layers,replace,stay){const W=traceData.width,H=traceData.height,bb={minX:0,minY:0,w:W,h:H};
   let posX=1,posY=1,hgt=3;
   const old=(replace&&lastTraceIds&&lastTraceIds.length)?state.objects.filter(o=>lastTraceIds.includes(o.id)):[];
   histPush(replace?"retrace":"trace");
@@ -882,10 +1007,23 @@ function placeTraceLayers(layers,replace){const W=traceData.width,H=traceData.he
     o.nodes=nodes.length?nodes:null;state.objects.push(o);ids.push(o.id);}
   if(!ids.length){alert("Nothing traced — adjust the settings.");return;}
   lastTraceIds=ids;lastTraceId=ids[0];state.selIds=ids.slice();state.selId=ids[0];
-  setTool("select");renderObjList();syncInputs();resetView();draw();}
-function traceRun(replace){if(!traceData)return;if(typeof JZTrace==="undefined"){alert("Tracing engine not loaded. SVG/DXF still work offline.");return;}
+  /* `stay` keeps the Import tool — and therefore the whole trace station with its
+     filters, despeckle and retrace button — on screen. Switching to Select here
+     unconditionally is what used to make the trace panel vanish the instant the
+     first automatic trace landed, with no way back to it. */
+  if(!stay)setTool("select");
+  renderObjList();syncInputs();resetView();draw();}
+/* One trace, no placement. Everything that wants traced geometry — the live
+   preview in the panel and the real Place-on-Mat run — comes through here, so
+   what you watch on the little canvas is exactly what lands on the vinyl.
+   `ts` is the despeckle size in pixels of THIS image; the preview passes a
+   scaled-down one so a speck stays a speck at preview resolution. */
+function traceCompute(img,ts){
+  if(!img)return null;
+  if(typeof JZTrace==="undefined")return {err:"Tracing engine not loaded. SVG/DXF still work offline."};
   const mode=($("traceMode")||{}).value||"auto",sm=parseInt(($("smooth")||{}).value||"3");
-  if(mode!=="bw"){let cres;try{cres=JZTrace.traceColor(traceData,{colors:parseInt(($("traceColors")||{}).value||"0"),smooth:sm,turdsize:2,subpixel:true});}catch(e){alert("Trace failed: "+(e.message||e));return;}
+  if(ts==null)ts=traceDespeckle();
+  if(mode!=="bw"){let cres;try{cres=JZTrace.traceColor(img,{colors:parseInt(($("traceColors")||{}).value||"0"),smooth:sm,turdsize:ts,subpixel:true});}catch(e){return {err:"Trace failed: "+(e.message||e)};}
     let layers=(cres&&cres.layers?cres.layers:[]).filter(L=>L.d);
     /* one-color art gains nothing from color mode — Auto falls through to the
        threshold trace, which also handles light-on-dark via Invert. That
@@ -896,12 +1034,483 @@ function traceRun(replace){if(!traceData)return;if(typeof JZTrace==="undefined")
       const tot=layers.reduce((s,L)=>s+(L.px||0),0);
       if(tot&&(layers[0].px||0)/tot>=0.92)layers=[];
     }
-    if(layers.length>=2||(mode==="color"&&layers.length)){placeTraceLayers(layers,replace);return;}
-    if(mode==="color"){alert("Couldn't split that into color layers — try Single color mode.");return;}}
-  const thr=parseInt($("thresh").value),inv=$("traceInvert").checked;let res;
-  try{res=JZTrace.trace(traceData,{threshold:thr,invert:inv,smooth:sm,turdsize:2,subpixel:true});}catch(e){alert("Trace failed: "+(e.message||e));return;}
-  const dm=res&&res.d?res.d:"";if(!dm){alert("Nothing traced — adjust the threshold or Invert.");return;}
-  placeTraceLayers([{color:"#111111",d:dm}],replace);}
+    if(layers.length>=2||(mode==="color"&&layers.length))return {layers};
+    if(mode==="color")return {err:"Couldn't split that into color layers — try Single color mode."};}
+  const thr=parseInt(($("thresh")||{}).value||"128"),inv=!!($("traceInvert")||{}).checked;let res;
+  try{res=JZTrace.trace(img,{threshold:thr,invert:inv,smooth:sm,turdsize:ts,subpixel:true});}catch(e){return {err:"Trace failed: "+(e.message||e)};}
+  const dm=res&&res.d?res.d:"";if(!dm)return {err:"Nothing traced — adjust the threshold or Invert."};
+  return {layers:[{color:"#111111",d:dm}]};}
+function traceDespeckle(){const el=$("despeckle");return el?Math.max(0,parseInt(el.value||"2")):2;}
+function traceRun(replace,stay){
+  if(!traceSource&&!traceData)return;
+  traceData=traceFiltered(traceSource||traceData);          /* full resolution */
+  const r=traceCompute(traceData,traceDespeckle());
+  if(!r)return; if(r.err){alert(r.err);return;}
+  placeTraceLayers(r.layers,replace,stay);}
+
+/* ======================= trace station: filters + preview =======================
+   Two rules hold this together. One: `traceSource` is never written to, so every
+   filter pass rebuilds from the original photo and the sliders can go back and
+   forth all day without the picture slowly rotting. Two: the preview traces a
+   downscaled copy so a twelve-megapixel phone photo still answers a slider drag
+   in a fraction of a second, and its despeckle size is scaled by the same factor
+   so a speck reads as a speck at either resolution. What you watch on the little
+   canvas is the same code path that lands on the vinyl. */
+
+function downscaleImageData(src,maxD){
+  const f=Math.min(1,maxD/Math.max(src.width,src.height));
+  if(f>=1)return src;
+  const w=Math.max(1,Math.round(src.width*f)),h=Math.max(1,Math.round(src.height*f));
+  const a=document.createElement("canvas");a.width=src.width;a.height=src.height;
+  a.getContext("2d").putImageData(src,0,0);
+  const b=document.createElement("canvas");b.width=w;b.height=h;
+  const bx=b.getContext("2d");bx.imageSmoothingEnabled=true;bx.imageSmoothingQuality="high";
+  bx.drawImage(a,0,0,w,h);
+  return bx.getImageData(0,0,w,h);}
+
+function traceFilterVals(){
+  const n=(id,d)=>{const e=$(id);return e?parseFloat(e.value):d;};
+  return {br:n("tfBright",0),ct:n("tfContrast",0),bl:n("tfBlur",0),sh:n("tfSharp",0),
+          kb:!!($("tfKillBg")||{}).checked,tol:n("tfBgTol",18)};}
+function traceFiltersActive(){const v=traceFilterVals();return !!(v.br||v.ct||v.bl||v.sh||v.kb);}
+function traceFilterLabels(){
+  const v=traceFilterVals(),set=(id,t)=>{const e=$(id);if(e)e.textContent=t;};
+  set("brOut",v.br);set("brV","("+(v.br>0?"+":"")+v.br+")");
+  set("ctOut",v.ct);set("ctV","("+(v.ct>0?"+":"")+v.ct+")");
+  set("blOut",v.bl);set("blV",v.bl?"("+v.bl+" px)":"(off)");
+  set("shOut",v.sh);set("shV",v.sh?"("+v.sh+"%)":"(off)");
+  set("bgOut",v.tol);set("bgV","("+v.tol+")");
+  const row=$("tfBgRow");if(row)row.style.display=v.kb?"":"none";
+  const st=$("tfState");if(st)st.textContent=traceFiltersActive()?"— on":"— none";}
+function traceFiltersReset(silent){
+  const set=(id,v)=>{const e=$(id);if(e)e.value=v;};
+  set("tfBright",0);set("tfContrast",0);set("tfBlur",0);set("tfSharp",0);set("tfBgTol",18);
+  const kb=$("tfKillBg");if(kb)kb.checked=false;
+  traceFilterLabels();
+  if(!silent){tracePreviewRender();traceRun(true,true);}}
+
+/* separable sliding-window box blur — three of these would be a gaussian, but for
+   knocking the fuzz off a JPEG one pass at the chosen radius is what you want */
+function boxBlurRGBA(d,w,h,r){
+  if(r<1)return;const tmp=new Uint8ClampedArray(d.length),win=r*2+1;
+  for(let y=0;y<h;y++){const row=y*w*4;
+    let s0=0,s1=0,s2=0;
+    for(let k=-r;k<=r;k++){const x=Math.min(w-1,Math.max(0,k))*4;s0+=d[row+x];s1+=d[row+x+1];s2+=d[row+x+2];}
+    for(let x=0;x<w;x++){const i=row+x*4;
+      tmp[i]=s0/win;tmp[i+1]=s1/win;tmp[i+2]=s2/win;tmp[i+3]=d[i+3];
+      const ad=Math.min(w-1,x+r+1)*4,rm=Math.min(w-1,Math.max(0,x-r))*4;
+      s0+=d[row+ad]-d[row+rm];s1+=d[row+ad+1]-d[row+rm+1];s2+=d[row+ad+2]-d[row+rm+2];}}
+  for(let x=0;x<w;x++){
+    let s0=0,s1=0,s2=0;
+    for(let k=-r;k<=r;k++){const y=Math.min(h-1,Math.max(0,k))*w*4+x*4;s0+=tmp[y];s1+=tmp[y+1];s2+=tmp[y+2];}
+    for(let y=0;y<h;y++){const i=y*w*4+x*4;
+      d[i]=s0/win;d[i+1]=s1/win;d[i+2]=s2/win;
+      const ad=Math.min(h-1,y+r+1)*w*4+x*4,rm=Math.min(h-1,Math.max(0,y-r))*w*4+x*4;
+      s0+=tmp[ad]-tmp[rm];s1+=tmp[ad+1]-tmp[rm+1];s2+=tmp[ad+2]-tmp[rm+2];}}}
+
+function traceFiltered(src){
+  if(!src)return src;
+  const v=traceFilterVals();
+  if(!(v.br||v.ct||v.bl||v.sh||v.kb))return src;          /* untouched photo, untouched memory */
+  const w=src.width,h=src.height,d=new Uint8ClampedArray(src.data);
+  if(v.bl>0)boxBlurRGBA(d,w,h,Math.round(v.bl));
+  if(v.br||v.ct){
+    const C=v.ct*2.55,f=(259*(C+255))/(255*(259-C)),B=v.br*2.55,lut=new Uint8ClampedArray(256);
+    for(let i=0;i<256;i++)lut[i]=f*(i-128)+128+B;
+    for(let i=0;i<d.length;i+=4){d[i]=lut[d[i]];d[i+1]=lut[d[i+1]];d[i+2]=lut[d[i+2]];}}
+  if(v.sh>0){                                             /* unsharp mask */
+    const soft=new Uint8ClampedArray(d);boxBlurRGBA(soft,w,h,1);const k=v.sh/100*1.5;
+    for(let i=0;i<d.length;i+=4){d[i]+=(d[i]-soft[i])*k;d[i+1]+=(d[i+1]-soft[i+1])*k;d[i+2]+=(d[i+2]-soft[i+2])*k;}}
+  if(v.kb){
+    /* the backdrop is whatever the four corners agree on — average them, then
+       paint every close-enough pixel pure white so the tracer ignores it */
+    const cs=[0,(w-1)*4,(h-1)*w*4,(h-1)*w*4+(w-1)*4];let r=0,g=0,b=0;
+    for(const c of cs){r+=d[c];g+=d[c+1];b+=d[c+2];}
+    r/=4;g/=4;b/=4;const thr=v.tol*4.2;
+    for(let i=0;i<d.length;i+=4){
+      if(Math.hypot(d[i]-r,d[i+1]-g,d[i+2]-b)<thr){d[i]=255;d[i+1]=255;d[i+2]=255;}}}
+  return new ImageData(d,w,h);}
+
+let tpvMode="result",tpvTimer=null;
+function tracePreviewSoon(){
+  const box=$("tracePrev");if(box&&box.parentNode)box.parentNode.classList.add("busy");
+  if(tpvTimer)clearTimeout(tpvTimer);
+  tpvTimer=setTimeout(()=>{tpvTimer=null;tracePreviewRender();},160);}
+function tracePreviewRender(){
+  const cvs=$("tracePrev");if(!cvs||!tracePrevSrc)return;
+  const box=cvs.parentNode;if(box)box.classList.remove("busy");
+  const img=traceFiltered(tracePrevSrc),w=img.width,h=img.height;
+  const CW=cvs.width=280,CH=cvs.height=Math.max(80,Math.round(280*h/w));
+  const g=cvs.getContext("2d");g.clearRect(0,0,CW,CH);
+  const info=$("tracePrevInfo"),what=$("tracePrevWhat");
+  if(tpvMode==="photo"){
+    const t=document.createElement("canvas");t.width=w;t.height=h;
+    t.getContext("2d").putImageData(img,0,0);
+    g.drawImage(t,0,0,CW,CH);
+    if(what)what.textContent="Filtered photo";
+    if(info)info.textContent=w+"×"+h+(traceFiltersActive()?" · filtered":" · original");
+    return;}
+  if(what)what.textContent="Traced result";
+  /* despeckle is measured in pixels, so shrink it with the picture */
+  const sc=w/(traceSource?traceSource.width:w),ts=Math.max(0,Math.round(traceDespeckle()*sc*sc));
+  const r=traceCompute(img,ts);
+  if(!r||r.err){if(info)info.textContent=r&&r.err?"nothing traced":"—";return;}
+  const s=CW/w;g.save();g.scale(s,s);
+  let pts=0;
+  for(const L of r.layers){
+    if(!L.d)continue;
+    pts+=(L.d.match(/[MLC]/g)||[]).length;
+    g.fillStyle=dispColor(L.color||"#111111");
+    try{g.fill(new Path2D(L.d),"evenodd");}catch(e){}}
+  g.restore();
+  if(info)info.textContent=r.layers.length+(r.layers.length===1?" layer · ":" layers · ")+pts+" pts";}
+
+/* ============================== Point Editor panel ==============================
+   The engine underneath this (nodes, handles, hit-testing, dragging) has been in
+   the app all along — what was missing was any way to see or reach it. These are
+   the dock controls: step point to point, type exact coordinates, switch corner
+   and smooth, add and delete, break and close and reverse a path, and simplify a
+   traced outline down to a workable number of points without going polygonal. */
+function ndObj(){const o=selected();if(o)ensureNodes(o);return o;}
+function ndSub(){const o=ndObj();return (o&&nodeSel&&o.nodes[nodeSel.si])||null;}
+function ndPt(){const sp=ndSub();return (sp&&sp.pts[nodeSel.pi])||null;}
+function ndTotal(){const o=ndObj();return o&&o.nodes?o.nodes.reduce((s,sp)=>s+sp.pts.length,0):0;}
+function ndIndex(){const o=ndObj();if(!o||!nodeSel)return 0;let n=0;
+  for(let i=0;i<nodeSel.si;i++)n+=o.nodes[i].pts.length;return n+nodeSel.pi+1;}
+function ndStep(dir){
+  const o=ndObj();if(!o||!o.nodes.length)return;
+  if(!nodeSel){nodeSel={si:0,pi:0};}
+  else{let si=nodeSel.si,pi=nodeSel.pi+dir;
+    while(pi<0){si=(si-1+o.nodes.length)%o.nodes.length;pi+=o.nodes[si].pts.length;}
+    while(pi>=o.nodes[si].pts.length){pi-=o.nodes[si].pts.length;si=(si+1)%o.nodes.length;}
+    nodeSel={si,pi};}
+  draw();}
+function ndCommit(o){objCommitNodes(o);renderObjList();syncInputs();draw();}
+/* called from draw() every frame, so the panel can never drift from the canvas */
+function ndPanelSync(){
+  const panel=$("panelNode");if(!panel||panel.style.display==="none")return;
+  const o=selected(),n=(o&&nodeSel)?ndPt():null,sp=ndSub();
+  const set=(id,t)=>{const e=$(id);if(e)e.textContent=t;};
+  const dis=(id,v)=>{const e=$(id);if(e)e.disabled=v;};
+  const on=(id,v)=>{const e=$(id);if(e)e.classList.toggle("on",!!v);};
+  set("ndWho",n?("point "+ndIndex()+" of "+ndTotal()):(o?"click a point on the mat":"select an object first"));
+  const X=$("ndX"),Y=$("ndY");
+  if(n&&o){const f=objFwd(o),w=f(n.x,n.y);
+    if(document.activeElement!==X)X.value=w[0].toFixed(3);
+    if(document.activeElement!==Y)Y.value=w[1].toFixed(3);}
+  else{if(X)X.value="";if(Y)Y.value="";}
+  ["ndX","ndY","ndCorner","ndSmooth","ndSegLine","ndSegCurve","ndAdd","ndDel","ndBreak","ndClose","ndReverse"]
+    .forEach(id=>dis(id,!n));
+  dis("ndSmoothAll",!sp);dis("ndCornerAll",!sp);dis("ndSimpPath",!sp);dis("ndSimpAll",!(o&&o.nodes&&o.nodes.length));
+  on("ndCorner",n&&!n.sm);on("ndSmooth",n&&n.sm);
+  if(n&&sp){const nx=sp.pts[(nodeSel.pi+1)%sp.pts.length],curved=!!(n.hOut&&nx&&nx.hIn);
+    on("ndSegCurve",curved);on("ndSegLine",!curved);}
+  else{on("ndSegCurve",false);on("ndSegLine",false);}
+  const cl=$("ndClose");if(cl)cl.textContent=(sp&&sp.closed)?"Open path":"Close path";
+  set("ndStats",o?(o.nodes.length+(o.nodes.length===1?" path · ":" paths · ")+ndTotal()+" points"+(sp?" · this path "+sp.pts.length:"")):"—");}
+function ndSetXY(){
+  const o=ndObj(),n=ndPt();if(!o||!n)return;
+  const x=parseFloat($("ndX").value),y=parseFloat($("ndY").value);
+  if(!isFinite(x)||!isFinite(y))return;
+  histPush("ndxy");
+  const[lx,ly]=objInv(o)(x,y),dx=lx-n.x,dy=ly-n.y;
+  n.x=lx;n.y=ly;if(n.hIn){n.hIn[0]+=dx;n.hIn[1]+=dy;}if(n.hOut){n.hOut[0]+=dx;n.hOut[1]+=dy;}
+  ndCommit(o);}
+function ndType(sm){const o=ndObj(),n=ndPt();if(!o||!n)return;if(!!n.sm===!!sm)return;
+  histPush();nodeToggleType(o,nodeSel.si,nodeSel.pi);ndCommit(o);}
+/* "the line leaving this point": curved gives the pair of handles a default
+   third-of-the-chord reach, straight simply drops them */
+function ndSeg(curve){
+  const o=ndObj(),sp=ndSub(),n=ndPt();if(!o||!n||!sp)return;
+  const nx=sp.pts[(nodeSel.pi+1)%sp.pts.length];if(!nx)return;
+  histPush();
+  if(curve){if(!n.hOut)n.hOut=[n.x+(nx.x-n.x)/3,n.y+(nx.y-n.y)/3];
+            if(!nx.hIn)nx.hIn=[nx.x-(nx.x-n.x)/3,nx.y-(nx.y-n.y)/3];}
+  else{n.hOut=null;nx.hIn=null;n.sm=false;nx.sm=false;}
+  ndCommit(o);}
+function ndAddPoint(){
+  const o=ndObj(),sp=ndSub(),n=ndPt();if(!o||!n||!sp)return;
+  const i=nodeSel.pi,nx=sp.pts[(i+1)%sp.pts.length];
+  if(!sp.closed&&i===sp.pts.length-1){alert("That's the last point of an open path — add a point before it, or close the path first.");return;}
+  histPush();
+  if(n.hOut&&nx.hIn){                                     /* de Casteljau at the middle */
+    const p0=[n.x,n.y],p1=n.hOut,p2=nx.hIn,p3=[nx.x,nx.y],
+      p01=lerp(p0,p1,.5),p12=lerp(p1,p2,.5),p23=lerp(p2,p3,.5),
+      p012=lerp(p01,p12,.5),p123=lerp(p12,p23,.5),p=lerp(p012,p123,.5);
+    n.hOut=p01;nx.hIn=p23;sp.pts.splice(i+1,0,{x:p[0],y:p[1],hIn:p012,hOut:p123,sm:true});}
+  else sp.pts.splice(i+1,0,{x:(n.x+nx.x)/2,y:(n.y+nx.y)/2,hIn:null,hOut:null,sm:false});
+  nodeSel={si:nodeSel.si,pi:i+1};ndCommit(o);}
+function ndDelPoint(){const o=ndObj();if(!o||!nodeSel)return;histPush();
+  const si=nodeSel.si,pi=nodeSel.pi;nodeDelete(o,si,pi);
+  const sp=o.nodes[si];nodeSel=sp?{si,pi:Math.min(pi,sp.pts.length-1)}:null;ndCommit(o);}
+function ndBreakPath(){
+  const o=ndObj(),sp=ndSub();if(!o||!sp||!nodeSel)return;
+  histPush();const i=nodeSel.pi;
+  if(sp.closed){sp.pts=sp.pts.slice(i).concat(sp.pts.slice(0,i));sp.closed=false;
+    sp.pts[0].hIn=null;sp.pts[sp.pts.length-1].hOut=null;nodeSel={si:nodeSel.si,pi:0};}
+  else{if(i<=0||i>=sp.pts.length-1){undoDiscard();return;}
+    const tail=sp.pts.slice(i).map(p=>JSON.parse(JSON.stringify(p)));
+    sp.pts=sp.pts.slice(0,i+1);sp.pts[sp.pts.length-1].hOut=null;tail[0].hIn=null;
+    o.nodes.splice(nodeSel.si+1,0,{closed:false,pts:tail});}
+  ndCommit(o);}
+function ndCloseToggle(){const o=ndObj(),sp=ndSub();if(!o||!sp)return;histPush();
+  sp.closed=!sp.closed;
+  if(!sp.closed){sp.pts[0].hIn=null;sp.pts[sp.pts.length-1].hOut=null;}
+  ndCommit(o);}
+function ndReversePath(){
+  const o=ndObj(),sp=ndSub();if(!o||!sp)return;histPush();
+  sp.pts.reverse();for(const p of sp.pts){const t=p.hIn;p.hIn=p.hOut;p.hOut=t;}
+  if(!sp.closed){sp.pts[0].hIn=null;sp.pts[sp.pts.length-1].hOut=null;}
+  nodeSel={si:nodeSel.si,pi:sp.pts.length-1-nodeSel.pi};ndCommit(o);}
+function ndAllType(sm){
+  const o=ndObj(),sp=ndSub();if(!o||!sp)return;histPush();
+  const save=nodeSel;
+  for(let i=0;i<sp.pts.length;i++){const n=sp.pts[i];
+    if(sm&&!n.sm){nodeSel={si:save.si,pi:i};nodeToggleType(o,save.si,i);}
+    else if(!sm&&n.sm){n.sm=false;n.hIn=null;n.hOut=null;}}
+  nodeSel=save;ndCommit(o);}
+function ndTolIn(){const v=parseInt(($("ndTol")||{}).value||"10")/1000;
+  const a=$("ndTolV"),b=$("ndTolOut");
+  if(a)a.textContent=v.toFixed(3)+'"';if(b)b.textContent=v.toFixed(3).replace(/^0/,"");
+  return v;}
+
+/* ---- simplify: fewer points, same shape ----
+   Ramer-Douglas-Peucker alone would turn every traced curve into a polygon,
+   which is exactly the "amateur" look we refuse to ship. So RDP only chooses
+   WHICH points survive; the shape between them is then re-fitted as a proper
+   cubic (Schneider's least-squares fit), and any span whose original arc barely
+   leaves the chord is left as a true straight segment — which is what keeps
+   traced rectangles rectangular. */
+function ptSegDist(p,a,b){const vx=b[0]-a[0],vy=b[1]-a[1],wx=p[0]-a[0],wy=p[1]-a[1];
+  const L2=vx*vx+vy*vy;let t=L2?(wx*vx+wy*vy)/L2:0;t=t<0?0:(t>1?1:t);
+  return Math.hypot(p[0]-(a[0]+vx*t),p[1]-(a[1]+vy*t));}
+function rdpIdx(poly,tol,closed){
+  const n=poly.length;if(n<3)return poly.map((_,i)=>i);
+  const keep=new Uint8Array(n);keep[0]=1;keep[n-1]=1;
+  /* a closed ring has no natural endpoints — anchor the far side too */
+  if(closed)keep[Math.floor(n/2)]=1;
+  const anchors=[];for(let i=0;i<n;i++)if(keep[i])anchors.push(i);
+  const stack=[];for(let i=0;i+1<anchors.length;i++)stack.push([anchors[i],anchors[i+1]]);
+  while(stack.length){                                    /* explicit stack: traced paths run to thousands of points */
+    const[s,e]=stack.pop();if(e-s<2)continue;
+    let bi=-1,bd=tol;
+    for(let i=s+1;i<e;i++){const d=ptSegDist(poly[i],poly[s],poly[e]);if(d>bd){bd=d;bi=i;}}
+    if(bi>0){keep[bi]=1;stack.push([s,bi]);stack.push([bi,e]);}}
+  const out=[];for(let i=0;i<n;i++)if(keep[i])out.push(i);return out;}
+function fitCubic(pts,t1,t2){
+  /* least-squares cubic through `pts` with the end tangents fixed (Schneider) */
+  const n=pts.length,p0=pts[0],p3=pts[n-1];
+  const u=[0];let L=0;
+  for(let i=1;i<n;i++){L+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);u.push(L);}
+  if(L<1e-12)return null;
+  for(let i=0;i<n;i++)u[i]/=L;
+  let c00=0,c01=0,c11=0,x0=0,x1=0;
+  for(let i=0;i<n;i++){const t=u[i],m=1-t,
+    b0=m*m*m,b1=3*m*m*t,b2=3*m*t*t,b3=t*t*t,
+    a0=[t1[0]*b1,t1[1]*b1],a1=[t2[0]*b2,t2[1]*b2];
+    c00+=a0[0]*a0[0]+a0[1]*a0[1];c01+=a0[0]*a1[0]+a0[1]*a1[1];c11+=a1[0]*a1[0]+a1[1]*a1[1];
+    const tx=pts[i][0]-(p0[0]*(b0+b1)+p3[0]*(b2+b3)),ty=pts[i][1]-(p0[1]*(b0+b1)+p3[1]*(b2+b3));
+    x0+=a0[0]*tx+a0[1]*ty;x1+=a1[0]*tx+a1[1]*ty;}
+  const det=c00*c11-c01*c01;let a,b2;
+  if(Math.abs(det)<1e-12){a=b2=L/3;}
+  else{a=(x0*c11-x1*c01)/det;b2=(c00*x1-c01*x0)/det;}
+  if(!(a>1e-9)||!(b2>1e-9)){a=L/3;b2=L/3;}               /* degenerate fit: fall back to thirds */
+  return [[p0[0]+t1[0]*a,p0[1]+t1[1]*a],[p3[0]+t2[0]*b2,p3[1]+t2[1]*b2]];}
+function ndSimplifySub(o,sp,tol){
+  const pts=sp.pts;if(pts.length<4)return 0;
+  /* flatten this subpath the same way the cutter will see it, remembering which
+     dense sample each original anchor became */
+  const poly=[],anchorAt=[];
+  const segs=sp.closed?pts.length:pts.length-1;
+  for(let i=0;i<segs;i++){const a=pts[i],b=pts[(i+1)%pts.length];
+    anchorAt.push(poly.length);poly.push([a.x,a.y]);
+    if(a.hOut&&b.hIn)for(let k=1;k<NSEG;k++)poly.push(cubicAt([a.x,a.y],a.hOut,b.hIn,[b.x,b.y],k/NSEG));}
+  if(sp.closed){poly.push([pts[0].x,pts[0].y]);anchorAt.push(poly.length-1);}
+  else{anchorAt.push(poly.length);poly.push([pts[pts.length-1].x,pts[pts.length-1].y]);}
+  const before=pts.length;
+  const keep=rdpIdx(poly,tol,sp.closed);
+  if(keep.length<(sp.closed?3:2))return 0;
+  if(keep.length>=poly.length)return 0;
+  /* unit tangents from the neighbouring retained points, so the refit joins smoothly */
+  const K=keep.length,ring=sp.closed;
+  const tangent=(idx,dir)=>{
+    let j=idx+dir;
+    if(j<0)j=ring?K-2:0;else if(j>K-1)j=ring?1:K-1;
+    const A=poly[keep[idx]],B=poly[keep[j]];
+    const dx=B[0]-A[0],dy=B[1]-A[1],L=Math.hypot(dx,dy)||1;return [dx/L,dy/L];};
+  const out=[];
+  const last=ring?K-1:K;                                  /* a ring repeats its first point at the end */
+  for(let i=0;i<last;i++)out.push({x:poly[keep[i]][0],y:poly[keep[i]][1],hIn:null,hOut:null,sm:false});
+  const nOut=out.length;
+  for(let i=0;i+1<K;i++){
+    const a=out[i],b=out[(i+1)%nOut];if(!a||!b)continue;
+    const span=poly.slice(keep[i],keep[i+1]+1);
+    if(span.length<3){continue;}                          /* already a single segment: leave it straight */
+    let maxOff=0;for(const p of span){const d=ptSegDist(p,span[0],span[span.length-1]);if(d>maxOff)maxOff=d;}
+    if(maxOff<tol*0.12)continue;                          /* it IS a straight line — keep it dead straight */
+    const t1=tangent(i,1),t2=tangent(i+1,-1);
+    const h=fitCubic(span,t1,t2);
+    if(!h)continue;
+    a.hOut=h[0];b.hIn=h[1];}
+  for(const p of out)p.sm=isSmoothNode(p);
+  sp.pts=out;
+  return before-out.length;}
+function ndSimplify(all){
+  const o=ndObj();if(!o||!o.nodes)return;
+  const tol=ndTolIn(),subs=all?o.nodes:[ndSub()].filter(Boolean);
+  if(!subs.length)return;
+  histPush();let dropped=0;
+  for(const sp of subs)dropped+=ndSimplifySub(o,sp,tol);
+  if(!dropped){undoDiscard();const s=$("ndStats");if(s)s.textContent="nothing to drop at that tolerance";return;}
+  nodeSel=(o.nodes.length&&o.nodes[0].pts.length)?{si:0,pi:0}:null;
+  ndCommit(o);
+  const s=$("ndStats");if(s)s.textContent="dropped "+dropped+" point"+(dropped===1?"":"s")+" · now "+ndTotal();}
+
+/* =========================== Detachable tool panels ===========================
+   Everything in the right-hand dock can be sent to a second window that lives on
+   another monitor. The panels are MOVED, not copied — document.adoptNode hands
+   the live element to the other window's document, so it is still the same node,
+   still carrying every listener wired at startup, and there is still exactly one
+   JS context running the app. That is why the only thing that had to change to
+   support this was $(), which now looks next door as well.
+   Order of preference: a real window; failing that (installed PWA, blocked
+   pop-up) Document Picture-in-Picture; failing that, we say so plainly. */
+function popCSS(){
+  let out="";
+  for(const s of document.styleSheets){
+    try{for(const r of s.cssRules)out+=r.cssText+"\n";}catch(e){}}
+  return out;}
+function popDress(doc){
+  doc.title="JZAK Cuts — Tools";
+  const st=doc.createElement("style");
+  st.textContent=popCSS()+`
+    html,body{height:100%;margin:0;overflow:auto}
+    body{background:var(--chrome);padding:8px;box-sizing:border-box}
+    #popHost{display:block;width:100%;max-width:340px;margin:0 auto}
+    #popHost .grp{margin-bottom:10px}
+    #popNote{font-size:11px;color:var(--muted);text-align:center;padding:14px 8px;line-height:1.5}`;
+  doc.head.appendChild(st);
+  const host=doc.createElement("div");host.id="popHost";
+  const note=doc.createElement("div");note.id="popNote";
+  note.textContent="Drag this window to your other monitor. Anything you detach lands here; closing it sends every panel home.";
+  host.appendChild(note);doc.body.appendChild(host);
+  return host;}
+async function popOpen(){
+  if(POPW.win&&!POPW.win.closed){try{POPW.win.focus();}catch(e){}return POPW.win;}
+  let w=null;
+  try{w=window.open("","jzakTools","width=380,height=900,menubar=no,toolbar=no,location=no,status=no");}catch(e){w=null;}
+  /* A window we cannot script is no use here — the panels have to be MOVED into
+     its document, which needs the same JS context. Anything that throws (a
+     cross-origin proxy, or a desktop shell that hands back a stub) is closed
+     again and we fall through to picture-in-picture instead. */
+  if(w){
+    let ok=false;
+    try{
+      w.document.open();
+      w.document.write("<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>");
+      w.document.close();
+      popDress(w.document);
+      ok=!!w.document.getElementById("popHost");
+    }catch(e){ok=false;}
+    if(ok){POPW.win=w;POPW.mode="window";popBind(w);return w;}
+    try{w.close();}catch(e){}}
+  if(window.documentPictureInPicture){
+    try{const p=await documentPictureInPicture.requestWindow({width:380,height:820});
+      POPW.win=p;POPW.mode="pip";popDress(p.document);popBind(p);return p;}catch(e){}}
+  alert("This window couldn't be opened — your browser blocked the pop-up. Allow pop-ups for JZAK Cuts and try again.");
+  return null;}
+function popBind(w){
+  /* the panels must come home BEFORE the window dies, or the browser destroys
+     them along with its document and the dock comes back empty */
+  const home=()=>popLost();
+  w.addEventListener("pagehide",home);
+  w.addEventListener("beforeunload",home);
+  w.addEventListener("unload",home);
+  /* keyboard shortcuts should work no matter which window has focus */
+  w.addEventListener("keydown",e=>{
+    if(/INPUT|TEXTAREA|SELECT/.test(((w.document.activeElement)||{}).tagName||""))return;
+    window.dispatchEvent(new KeyboardEvent("keydown",{key:e.key,code:e.code,ctrlKey:e.ctrlKey,
+      metaKey:e.metaKey,shiftKey:e.shiftKey,altKey:e.altKey,bubbles:true}));});
+  if(POPW.timer)clearInterval(POPW.timer);
+  POPW.timer=setInterval(()=>{if(!POPW.win||POPW.win.closed)popLost();},700);}
+function popLost(){
+  if(POPW.timer){clearInterval(POPW.timer);POPW.timer=null;}
+  popReattachAll(false);
+  POPW.win=null;POPW.mode=null;popSave();}
+function popPlaceholder(id){
+  const p=document.createElement("div");
+  p.className="grp popEmpty";p.id="popHole_"+id;
+  p.innerHTML='<span></span>';
+  p.querySelector("span").textContent="on your other screen";
+  const b=document.createElement("button");b.textContent="Bring back";
+  b.onclick=()=>{popAttach(id);popSave();};
+  p.appendChild(b);
+  return p;}
+async function popDetach(id){
+  const el=document.getElementById(id);if(!el)return;
+  const w=await popOpen();if(!w)return;
+  const host=w.document.getElementById("popHost");if(!host)return;
+  const note=w.document.getElementById("popNote");if(note)note.style.display="none";
+  el.parentNode.insertBefore(popPlaceholder(id),el);
+  host.appendChild(w.document.adoptNode(el));
+  el.dataset.popped="1";
+  if(POPW.ids.indexOf(id)<0)POPW.ids.push(id);
+  popSyncButtons();popSave();
+  try{w.focus();}catch(e){}}
+function popAttach(id){
+  const w=POPW.win;let el=null;
+  if(w&&!w.closed&&w.document)el=w.document.getElementById(id);
+  const hole=document.getElementById("popHole_"+id);
+  if(el){const target=document.adoptNode(el);
+    if(hole)hole.parentNode.replaceChild(target,hole);
+    else $("dock").appendChild(target);
+    delete target.dataset.popped;}
+  else if(hole)hole.remove();
+  POPW.ids=POPW.ids.filter(x=>x!==id);
+  if(w&&!w.closed)popHostEmpty(w);
+  popSyncButtons();}
+function popReattachAll(keepOpen){
+  POPW.ids.slice().forEach(id=>popAttach(id));
+  document.querySelectorAll(".popEmpty").forEach(h=>h.remove());
+  if(!keepOpen&&POPW.win&&!POPW.win.closed){
+    const w=POPW.win;POPW.win=null;try{w.close();}catch(e){}}
+  popSyncButtons();popSave();}
+function popHostEmpty(w){
+  try{const host=w.document.getElementById("popHost"),note=w.document.getElementById("popNote");
+    if(host&&note&&!host.querySelector(".grp"))note.style.display="";}catch(e){}}
+/* every dock section gets a small ⧉ in its heading */
+function popInitButtons(){
+  document.querySelectorAll("#dock > .grp").forEach(g=>{
+    if(!g.id)return;
+    const h=g.querySelector("h3");if(!h||h.querySelector(".popbtn"))return;
+    const b=document.createElement("button");
+    b.className="popbtn";b.type="button";b.innerHTML="&#8663;";
+    b.title="Send this panel to your other monitor";
+    b.onclick=ev=>{ev.stopPropagation();
+      if(g.dataset.popped==="1"||POPW.ids.indexOf(g.id)>=0){popAttach(g.id);popSave();}
+      else popDetach(g.id);};
+    h.appendChild(b);});
+  popSyncButtons();}
+function popBtnSync(g,out){
+  const b=g.querySelector(".popbtn");if(!b)return;
+  b.innerHTML=out?"&#8664;":"&#8663;";
+  b.title=out?"Bring this panel back to this window":"Send this panel to your other monitor";
+  b.classList.toggle("out",!!out);}
+function popSyncButtons(){
+  document.querySelectorAll("#dock > .grp").forEach(g=>popBtnSync(g,false));
+  const w=POPW.win;
+  if(w&&!w.closed&&w.document)
+    POPW.ids.forEach(id=>{const g=w.document.getElementById(id);if(g)popBtnSync(g,true);});}
+function popSave(){try{lsSet("jzakcuts.pop",POPW.ids);}catch(e){}}
+/* Pop-up blockers reject window.open outside a gesture, so a saved layout is
+   restored on the user's next click rather than silently failing at load. */
+function popRestoreOffer(){
+  let ids=[];try{const raw=lsGet("jzakcuts.pop");if(Array.isArray(raw))ids=raw;}catch(e){}
+  ids=ids.filter(id=>document.getElementById(id));
+  if(!ids.length)return;
+  const go=async()=>{window.removeEventListener("click",go,true);
+    for(const id of ids)await popDetach(id);};
+  window.addEventListener("click",go,true);}
 
 /* ---- grid ---- */
 function makeGrid(){const o=selected();if(!o){alert("Select an object first.");return;}histPush();const n=Math.max(1,parseInt($("copyN").value||"1")),gap=parseFloat($("copyGap").value||"0.5"),matW=parseFloat($("matWidth").value||"24"),w=objWidth(o),h=o.height,perCol=Math.max(1,Math.floor((matW+gap)/(h+gap))),sX=o.posX,sY=o.posY,newIds=[];state.objects=state.objects.filter(x=>x.id!==o.id);for(let i=0;i<n;i++){const col=Math.floor(i/perCol),row=i%perCol,c=JSON.parse(JSON.stringify(o));c.id=nextId++;c.posX=sX+col*(w+gap);c.posY=sY+row*(h+gap);c.name=o.name+" #"+(i+1);state.objects.push(c);newIds.push(c.id);}resetView();setSel(newIds);}
@@ -1168,7 +1777,7 @@ function nodeMouseMove(wx,wy){if(!nodeDrag)return;const o=state.objects.find(z=>
   if(part==='anchor'){const dx=lx-n.x,dy=ly-n.y;n.x=lx;n.y=ly;if(n.hIn){n.hIn[0]+=dx;n.hIn[1]+=dy;}if(n.hOut){n.hOut[0]+=dx;n.hOut[1]+=dy;}}
   else{n[part]=[lx,ly];if(n.sm){const other=part==='hIn'?'hOut':'hIn';if(n[other]){const dx=lx-n.x,dy=ly-n.y,ld=Math.hypot(dx,dy)||1,ol=Math.hypot(n[other][0]-n.x,n[other][1]-n.y);n[other]=[n.x-dx/ld*ol,n.y-dy/ld*ol];}}}
   objFwdRebuild(o);draw();}
-function drawNodes(){const o=selected();if(!o||state.tool!=='node')return;ensureNodes(o);const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany,fwd=objFwd(o),S=(lx,ly)=>{const w=fwd(lx,ly);return[ox+w[0]*ppi,oy+w[1]*ppi];};
+function drawNodes(){const o=selected();ndPanelSync();if(!o||state.tool!=='node')return;ensureNodes(o);ndPanelSync();const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany,fwd=objFwd(o),S=(lx,ly)=>{const w=fwd(lx,ly);return[ox+w[0]*ppi,oy+w[1]*ppi];};
   ctx.save();ctx.beginPath();ctx.rect(RL,RT,L.W-RL,L.H-RT);ctx.clip();
   ctx.strokeStyle="#1e6fe0";ctx.fillStyle="#1e6fe0";ctx.lineWidth=1;
   for(const sp of o.nodes)for(const n of sp.pts){const[ax,ay]=S(n.x,n.y);[n.hIn,n.hOut].forEach(h=>{if(h){const[hx,hy]=S(h[0],h[1]);ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(hx,hy);ctx.stroke();ctx.beginPath();ctx.arc(hx,hy,3,0,7);ctx.fill();}});}
@@ -1419,14 +2028,20 @@ function deleteJob(){const k=$("jobSelect").value;if(!k)return;const jobs=lsGet(
 /* ---- tools + menus ---- */
 function setTool(t){state.tool=t;document.querySelectorAll(".tool[data-tool]").forEach(el=>el.classList.toggle("on",el.dataset.tool===t));
   $("panelText").style.display=t==="text"?"":"none";$("panelImport").style.display=t==="import"?"":"none";$("panelSelect").style.display=(t==="text"||t==="import")?"none":"";
+  $("panelNode").style.display=t==="node"?"":"none";
   cv.style.cursor=t==="pan"?"grab":(t==="zoom"?"zoom-in":(t==="node"?"crosshair":"default"));
-  if(t==="node"){const o=selected();if(o)ensureNodes(o);nodeSel=null;}
+  if(t==="node"){const o=selected();if(o){ensureNodes(o);}nodeSel=(o&&o.nodes&&o.nodes.length&&o.nodes[0].pts.length)?{si:0,pi:0}:null;}
   if(t==="text")setTimeout(()=>$("textInput").focus(),0);
   $("nodeHint").style.display=t==="node"?"":"none";
   draw();
 }
 const ACT={
   import:()=>$("vecFile").click(), addtext:()=>setTool("text"),
+  popall:async()=>{const ids=[...document.querySelectorAll("#dock > .grp")].map(g=>g.id).filter(Boolean);
+    for(const id of ids)await popDetach(id);},
+  popnone:()=>popReattachAll(true),
+  popwin:()=>popOpen(),
+  nodetool:()=>{if(!selected()){alert("Select the design you want to edit first.");return;}setTool("node");draw();},
   savejob:saveJob, loadjob:loadJob, exportsvg:exportSVG, plt:()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}download("jzak-cut.plt",h);},
   dup:duplicateSel, del:deleteSel, selall:selectAll,
   alignleft:()=>alignSel("left"), alignhc:()=>alignSel("hcenter"), alignright:()=>alignSel("right"),
@@ -1473,13 +2088,41 @@ document.querySelectorAll(".tool[data-tool]").forEach(el=>el.onclick=()=>setTool
 $("buildTextBtn").onclick=buildText;
 $("fontFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{opentype.parse(r.result);const b64=bufToB64(r.result),uf=userFonts(),name=f.name.replace(/\.(ttf|otf)$/i,"");uf[name]=b64;lsSet("jzakcuts.fonts",uf);fontCache={};populateFonts();$("fontSelect").value="usr:"+name;$("fontHint").textContent="Saved font: "+name;}catch(err){alert("Couldn't read that font file.");}};r.readAsArrayBuffer(f);};
 $("vecFile").onchange=e=>{const f=e.target.files[0];if(f)onVecFile(f);};
-$("thresh").oninput=()=>{$("thOut").textContent=$("thresh").value;$("thV").textContent="("+$("thresh").value+")";};
-$("thresh").onchange=()=>traceRun(true);
-$("traceMode").onchange=()=>{traceModeUI();traceRun(true);};
-$("traceColors").onchange=()=>traceRun(true);
-$("smooth").oninput=()=>{$("smOut").textContent=$("smooth").value;$("smV").textContent="("+$("smooth").value+")";};
-$("smooth").onchange=()=>traceRun(true);
-$("retraceBtn").onclick=()=>traceRun(true);$("traceInvert").onchange=()=>traceRun(true);
+/* Every trace control drives the live preview while you drag (cheap, downscaled)
+   and only re-traces the real full-resolution art when you let go. `stay` keeps
+   the trace station on screen; only Place on Mat hands you back to Select. */
+$("thresh").oninput=()=>{$("thOut").textContent=$("thresh").value;$("thV").textContent="("+$("thresh").value+")";tracePreviewSoon();};
+$("thresh").onchange=()=>traceRun(true,true);
+$("traceMode").onchange=()=>{traceModeUI();traceRun(true,true);};
+$("traceColors").onchange=()=>{tracePreviewSoon();traceRun(true,true);};
+$("smooth").oninput=()=>{$("smOut").textContent=$("smooth").value;$("smV").textContent="("+$("smooth").value+")";tracePreviewSoon();};
+$("smooth").onchange=()=>traceRun(true,true);
+$("despeckle").oninput=()=>{$("dsOut").textContent=$("despeckle").value;$("dsV").textContent="("+$("despeckle").value+" px)";tracePreviewSoon();};
+$("despeckle").onchange=()=>traceRun(true,true);
+$("traceInvert").onchange=()=>{tracePreviewSoon();traceRun(true,true);};
+["tfBright","tfContrast","tfBlur","tfSharp","tfBgTol"].forEach(id=>{
+  $(id).oninput=()=>{traceFilterLabels();tracePreviewSoon();};
+  $(id).onchange=()=>traceRun(true,true);});
+$("tfKillBg").onchange=()=>{traceFilterLabels();tracePreviewSoon();traceRun(true,true);};
+$("tfReset").onclick=()=>traceFiltersReset(false);
+$("tpvResult").onclick=()=>{tpvMode="result";$("tpvResult").classList.add("on");$("tpvPhoto").classList.remove("on");tracePreviewRender();};
+$("tpvPhoto").onclick=()=>{tpvMode="photo";$("tpvPhoto").classList.add("on");$("tpvResult").classList.remove("on");tracePreviewRender();};
+$("retraceBtn").onclick=()=>{tracePreviewRender();traceRun(true,true);};
+$("tracePlaceBtn").onclick=()=>traceRun(true,false);
+
+/* ---- point editor ---- */
+$("ndPrev").onclick=()=>ndStep(-1);      $("ndNext").onclick=()=>ndStep(1);
+$("ndX").onchange=ndSetXY;               $("ndY").onchange=ndSetXY;
+$("ndCorner").onclick=()=>ndType(false); $("ndSmooth").onclick=()=>ndType(true);
+$("ndSegLine").onclick=()=>ndSeg(false); $("ndSegCurve").onclick=()=>ndSeg(true);
+$("ndAdd").onclick=ndAddPoint;           $("ndDel").onclick=ndDelPoint;
+$("ndBreak").onclick=ndBreakPath;        $("ndClose").onclick=ndCloseToggle;
+$("ndReverse").onclick=ndReversePath;
+$("ndSmoothAll").onclick=()=>ndAllType(true);
+$("ndCornerAll").onclick=()=>ndAllType(false);
+$("ndTol").oninput=ndTolIn;
+$("ndSimpPath").onclick=()=>ndSimplify(false);
+$("ndSimpAll").onclick=()=>ndSimplify(true);
 $("dupBtn").onclick=duplicateSel;$("delBtn").onclick=deleteSel;$("gridBtn").onclick=makeGrid;
 document.querySelectorAll("#alignGrid button").forEach(b=>b.onclick=()=>alignSel(b.dataset.align));
 document.querySelectorAll("#distGrid button").forEach(b=>b.onclick=()=>distributeSel(b.dataset.dist));
@@ -1507,6 +2150,7 @@ $("testBtn").onclick=()=>ACT.test();$("pltBtn").onclick=()=>ACT.plt();$("svgOutB
 /* ---- init ---- */
 window.addEventListener("resize",()=>{fitCanvas();draw();});
 checkSerial();fitCanvas();populateFonts();refreshAssets();refreshJobSelect();updZoom();updCalNote();setTool("select");
+ndTolIn();traceFilterLabels();popInitButtons();popRestoreOffer();
 buildText().then(()=>histReset()).catch(()=>histReset());draw();
 </script>
 </body>
