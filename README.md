@@ -91,7 +91,31 @@ want to simplify a busy image.
 
 ### For truly exact, commercial-grade cuts
 
-Tracing turns a *picture* into cut lines — it's only ever as sharp as the image you feed it (a Silhouette `.studio3` carries just a 512 px preview inside, so it can't trace razor-sharp). For exact work, feed **real vectors**: in Silhouette Studio use **File → Save As / Export** to **SVG** (Designer Edition) or **DXF** (free edition), then import that here — it comes in as exact, infinitely scalable vector paths, no tracing. For logos you only have as images, use the **highest-resolution** source you can (original art / PDF / large PNG).
+Tracing turns a *picture* into cut lines — it's only ever as sharp as the image you feed it. For exact work, feed **real vectors**: SVG, DXF, or a Silhouette **`.studio3`**, all of which come in as exact, infinitely scalable paths with no tracing at all. For logos you only have as images, use the **highest-resolution** source you can (original art / PDF / large PNG).
+
+### Silhouette `.studio3` files read as real vectors
+
+A `.studio3` is not traced. Since **10.5.1** the importer decodes the file's actual path records, so what lands on the mat is the same geometry Silhouette Studio drew, curve handles and all — not the 512 px preview picture buried inside it.
+
+The format is undocumented, so this was worked out from real files. Each path is a self-describing record: twelve bytes of per-path junk, the literal marker `02 00 00 00 00 01`, a `uint32` of the record length plus eight, four zero bytes, that length again, a closed/open byte, and an `int32` **segment** count — one *less* than the number of anchors — then the anchors and a five-byte trailer.
+
+Two details in there are the whole fix, and both were costing real artwork:
+
+The count is segments, not anchors. Reading it as an anchor count drops the last anchor of every path in the file and closes each loop on the wrong curve.
+
+The length field lets a record prove itself. After reading the anchors we know where the record must have ended, and the header says where it did end; if those two numbers disagree by so much as a byte, the "record" was a coincidence in unrelated bytes and it is thrown away. The old decoder had no header to lock onto, so it accepted runs of zero padding as paths at 0,0 and then carried on reading *past* the real records those phantoms had swallowed. On a customer file — a 239-path donkey drawing — that returned 106 paths with two straight seams slashed across the artwork. It now returns all 239, every one reconciling exactly, with the longest straight run in the whole design down from 1.21″ to 0.099″.
+
+Older `.studio` files that carry no record marker still work: nothing matches, and the importer falls back to the original scan, and failing that to tracing the embedded preview.
+
+If you would rather export, **File → Save As / Export** to **SVG** (Designer Edition) or **DXF** (free edition) is still perfectly good and always will be.
+
+### SVG files drawn in inches or millimetres
+
+An SVG's own coordinates are *user units*, and how many of them make an inch is up to whoever drew the file. Illustrator, Inkscape and our own multi-colour templates routinely author in inches, where one user unit **is** one inch; a web-style file uses 96 to the inch.
+
+Before **10.5.1** the importer sampled every path at a fixed step of 0.4 user units. In a 96-unit file that is four tenths of a pixel, which is fine. In an inch-authored file it is four tenths of an *inch* of arc — so any path smaller than that yielded a single sample and was discarded for having fewer than two points. Small detail simply vanished, quietly, with no error.
+
+Sampling is now by count against a physical target of about four thousandths of an inch between samples, with a floor of 24 samples so the smallest speck survives and a ceiling of 1600 so one enormous path cannot bury the editor. `testsvgunits.cjs` pins it down: the same drawing written in inches, in millimetres and in pixels has to import with the same path count and the same physical size.
 
 ### Point / node editing (the ✎ tool)
 
@@ -182,7 +206,7 @@ History holds the last 80 steps. A run of small changes — dragging a handle, h
 ### Using the v4 features
 
 - **Your fonts:** Bebas Neue, Anton, Big Shoulders (Bold) and Big Shoulders Stencil are baked in and available on any computer. Need another? **Upload a .ttf/.otf** in the Text tab — it's saved in that browser and shows up in the font list next time.
-- **Upload anything to cut or trace:** the *Import / Trace* tab takes SVG and DXF as vectors, **any image** (PNG/JPG/GIF/BMP/WEBP), and Silhouette **.studio3** files — all auto-traced into cut lines. Adjust the **threshold** slider (and **Invert** for light-on-dark art) and hit **Re-trace** until the outline is clean. (.studio3 is a closed format, so it traces the file's embedded preview image; for PDF/AI, export to SVG or PNG first.)
+- **Upload anything to cut or trace:** the *Import / Trace* tab takes SVG, DXF and Silhouette **.studio3** as real vectors — no tracing, exact geometry — plus **any image** (PNG/JPG/GIF/BMP/WEBP), which is auto-traced into cut lines. For images, adjust the **threshold** slider (and **Invert** for light-on-dark art) and hit **Re-trace** until the outline is clean. For PDF/AI, export to SVG or PNG first.
 - **Saved designs:** select an object and **Save** it to your library (left panel) — traced logos, imported art, lettering — then **Add to mat** any time to reuse it.
 - **Multiple objects & batch runs:** every add drops a new object; click to select, drag to move. Select one, set **Copies**/**Gap**, and **Make grid** to fill the vinyl with a whole batch in one cut.
 - **Registration marks & job library:** tick *Registration marks* for print-and-cut alignment; save/load whole jobs (mat + settings), and export a `.json` to move a job between computers.
@@ -227,7 +251,24 @@ undo/redo, the PWA, the font loader, and both halves of the serial layer. Each
 one prints `PASS`/`FAIL` lines and finishes with a summary. The Rust half of
 the serial layer has its own tests — `cargo test` from `desktop/src-tauri`.
 
-Three of them are worth knowing by name: `teststation.cjs` loads a grubby photo
+Two guard the file importers, and both were confirmed to *fail* against the
+pre-10.5.1 code before the fix went in: `teststudio.cjs` checks the `.studio3`
+record layout, the segment-versus-anchor count, the closed/open flag, and that a
+record whose length field lies is refused rather than half-read; `testsvgunits.cjs`
+draws the same shape in inches, millimetres and pixels and insists all three
+import identically. Both synthesise their own fixtures, so no customer artwork
+lives in the repository.
+
+`verifydonkey.cjs` is the matching check against real artwork rather than a
+fixture. It is not part of the suite — it takes a `.studio3` on the command line
+(`node verifydonkey.cjs donkeymudd.studio3`) and reports decoded records,
+cuttable subpaths and the longest straight run in the design, which is the
+visual signature of a phantom record joining two unrelated parts of the drawing.
+The two counts are allowed to differ: that file holds two specks whose entire
+bounding box is under a thousandth of an inch, smaller than the blade kerf, and
+the object builder correctly drops them — 239 records, 237 cuttable paths.
+
+Three more are worth knowing by name: `teststation.cjs` loads a grubby photo
 and proves the trace panel stays put while the filters and despeckle actually
 change the cut; `testptpanel.cjs` drives every button in the Point Editor and
 holds Simplify to a measured deviation from a true circle and a true rectangle;

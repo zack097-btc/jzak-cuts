@@ -9639,14 +9639,55 @@ async function buildText(){const text=$("textInput").value;if(!text.trim()){aler
 function flattenOpentype(path){const N=16,subs=[];let cur=[],start=null,px=0,py=0;for(const c of path.commands){if(c.type==="M"){if(cur.length)subs.push(cur);cur=[[c.x,c.y]];start=[c.x,c.y];px=c.x;py=c.y;}else if(c.type==="L"){cur.push([c.x,c.y]);px=c.x;py=c.y;}else if(c.type==="C"){sampleCubic([px,py],[c.x1,c.y1],[c.x2,c.y2],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Q"){sampleQuad([px,py],[c.x1,c.y1],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Z"){if(start)cur.push([start[0],start[1]]);if(cur.length)subs.push(cur);cur=[];}}if(cur.length)subs.push(cur);return subs;}
 
 /* ---- SVG / DXF / image / studio import ---- */
-function importSVG(file){const r=new FileReader();r.onload=()=>{try{const doc=new DOMParser().parseFromString(r.result,"image/svg+xml"),svg=doc.documentElement,holder=document.createElement("div");holder.style.cssText="position:absolute;left:-99999px;top:-99999px;width:2000px;height:2000px";holder.appendChild(svg);document.body.appendChild(holder);const subs=[];svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse").forEach(el=>{let t=0;try{t=el.getTotalLength();}catch(e){return;}if(!t||!isFinite(t))return;const step=Math.max(0.4,t/400),ctm=el.getCTM(),pts=[];for(let d=0;d<=t;d+=step){let p=el.getPointAtLength(d);if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;pts.push([p.x,p.y]);}if(pts.length>1)subs.push(pts);});/* The sampled points are in RENDERED pixels (the CTM maps them there), so
-   inches-per-unit must come from the rendered pixel width against the SVG's
-   physical width — not from viewBox units, which the CTM has already eaten.
-   An SVG that declares no physical size stays at the CSS 96 px/inch. */
-let upi=96;const wA=svg.getAttribute("width")||"",vb=(svg.getAttribute("viewBox")||"").split(/[ ,]+/).map(Number),mm=wA.match(/([\d.]+)mm/),inm=wA.match(/([\d.]+)in/),pin=mm?parseFloat(mm[1])/25.4:(inm?parseFloat(inm[1]):0);
-if(pin>0){let pxW=0;try{pxW=svg.width.baseVal.value;}catch(e){}
-  if(pxW>0)upi=pxW/pin;else if(vb.length===4&&vb[2]>0)upi=vb[2]/pin;}
-document.body.removeChild(holder);if(!subs.length){alert("No cuttable paths found in that SVG.");return;}const scaled=subs.map(sp=>sp.map(([x,y])=>[x/upi,y/upi])),bb=bboxOf(scaled);addObject(scaled,file.name,bb.h);}catch(e){alert("SVG import failed: "+(e.message||e));}};r.readAsText(file);}
+function importSVG(file){const r=new FileReader();r.onload=()=>{try{
+  const doc=new DOMParser().parseFromString(r.result,"image/svg+xml"),svg=doc.documentElement,
+        holder=document.createElement("div");
+  holder.style.cssText="position:absolute;left:-99999px;top:-99999px;width:2000px;height:2000px";
+  holder.appendChild(svg);document.body.appendChild(holder);
+  /* Two different scales matter here and confusing them silently eats artwork.
+     getTotalLength() and getPointAtLength() work in the SVG's own USER UNITS.
+     The points that come back get pushed through the CTM into RENDERED PIXELS.
+     So the sampling step has to be expressed in user units and the final
+     divide has to be in pixels, and the two are only the same number when the
+     file happens to be authored at 96 units per inch.
+       upi  = rendered pixels per inch  (for scaling the sampled points)
+       uupi = SVG user units per inch   (for choosing the sampling step)
+     A file drawn in inches has uupi = 1, and the old fixed step of 0.4 units
+     was 0.4 INCHES of arc — which quietly reduced every small path to a single
+     sample and then threw it away for having fewer than two points. That is
+     how a 239-path drawing came in as 126, and it hit our own inch-based
+     multi-colour templates too. */
+  let upi=96,uupi=96;
+  const wA=svg.getAttribute("width")||"",vb=(svg.getAttribute("viewBox")||"").split(/[ ,]+/).map(Number),
+        mm=wA.match(/([\d.]+)mm/),inm=wA.match(/([\d.]+)in/),
+        pin=mm?parseFloat(mm[1])/25.4:(inm?parseFloat(inm[1]):0);
+  let pxW=0;try{pxW=svg.width.baseVal.value;}catch(e){}
+  if(pin>0){
+    if(pxW>0)upi=pxW/pin;else if(vb.length===4&&vb[2]>0)upi=vb[2]/pin;
+    uupi=(vb.length===4&&vb[2]>0)?vb[2]/pin:upi;
+  }
+  /* Sample by COUNT rather than by absolute step, so the resolution is
+     physical: about four thousandths of an inch between samples, at
+     least 24 samples on even the smallest speck so a mud drop survives, and a
+     ceiling so one enormous path cannot bury the editor. */
+  const FINE=uupi*0.004,MINPTS=24,MAXPTS=1600,subs=[];
+  svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse").forEach(el=>{
+    let t=0;try{t=el.getTotalLength();}catch(e){return;}
+    if(!t||!isFinite(t)||t<=0)return;
+    const nseg=Math.max(MINPTS,Math.min(MAXPTS,Math.ceil(t/Math.max(FINE,1e-9)))),
+          ctm=el.getCTM(),pts=[];
+    for(let i=0;i<=nseg;i++){
+      let p=el.getPointAtLength(t*i/nseg);
+      if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;
+      pts.push([p.x,p.y]);
+    }
+    if(pts.length>1)subs.push(pts);
+  });
+  document.body.removeChild(holder);
+  if(!subs.length){alert("No cuttable paths found in that SVG.");return;}
+  const scaled=subs.map(sp=>sp.map(([x,y])=>[x/upi,y/upi])),bb=bboxOf(scaled);
+  addObject(scaled,file.name,bb.h);
+}catch(e){alert("SVG import failed: "+(e.message||e));}};r.readAsText(file);}
 function parseDXF(text){const rows=text.split(/\r\n|\r|\n/),pairs=[];for(let i=0;i+1<rows.length;i+=2)pairs.push([parseInt(rows[i].trim(),10),rows[i+1].trim()]);const ents=[];let cur=null;for(const [code,val] of pairs){if(isNaN(code))continue;if(code===0){if(cur)ents.push(cur);cur={type:val,c:{}};}else if(cur){(cur.c[code]=cur.c[code]||[]).push(val);}}if(cur)ents.push(cur);const n=v=>parseFloat(v),subs=[];let poly=null;for(const e of ents){const c=e.c;if(e.type==="LINE"&&c[10]&&c[11])subs.push([[n(c[10][0]),-n(c[20][0])],[n(c[11][0]),-n(c[21][0])]]);else if(e.type==="LWPOLYLINE"&&c[10]){const xs=c[10],ys=c[20]||[],p=[];for(let i=0;i<xs.length;i++)p.push([n(xs[i]),-n(ys[i]||0)]);if(c[70]&&(parseInt(c[70][0],10)&1)&&p.length)p.push(p[0].slice());if(p.length>1)subs.push(p);}else if(e.type==="CIRCLE"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]),p=[];for(let i=0;i<=64;i++){const a=i/64*2*Math.PI;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="ARC"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]);let a0=n(c[50][0]),a1=n(c[51][0]);if(a1<a0)a1+=360;const st=Math.max(8,Math.round((a1-a0)/5)),p=[];for(let i=0;i<=st;i++){const a=(a0+(a1-a0)*i/st)*Math.PI/180;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="POLYLINE")poly=[];else if(e.type==="VERTEX"&&poly&&c[10])poly.push([n(c[10][0]),-n(c[20][0])]);else if(e.type==="SEQEND"){if(poly&&poly.length>1)subs.push(poly);poly=null;}}return subs;}
 function importDXF(file){const r=new FileReader();r.onload=()=>{try{const subs=parseDXF(r.result);if(!subs.length){alert("No cuttable entities found in that DXF.");return;}const bb=bboxOf(subs);addObject(subs,file.name,bb.h);}catch(e){alert("DXF import failed: "+(e.message||e));}};r.readAsText(file);}
 let traceData=null,lastTraceId=null,lastTraceIds=null;
@@ -9674,11 +9715,75 @@ function loadImageForTrace(url){const img=new Image();img.onload=()=>{URL.revoke
   $("traceCtl").style.display="";$("traceMode").value="auto";$("traceColors").value="0";traceModeUI();lastTraceId=null;lastTraceIds=null;
   tracePreviewRender();traceRun(false,true);};img.onerror=()=>alert("Couldn't read that image.");img.src=url;}
 function extractLargestPNG(buf){const u=new Uint8Array(buf),sig=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a];let best=null;for(let i=0;i+8<u.length;i++){let m=true;for(let k=0;k<8;k++)if(u[i+k]!==sig[k]){m=false;break;}if(!m)continue;let end=-1;for(let j=i+8;j+8<=u.length;j++){if(u[j]===0x49&&u[j+1]===0x45&&u[j+2]===0x4e&&u[j+3]===0x44){end=j+8;break;}}if(end>0){if(!best||end-i>best.len)best={s:i,e:end,len:end-i};i=end;}}return best?u.slice(best.s,best.e):null;}
+/* Every path in a .studio3 is a self-describing RECORD, and finding the record
+   header is what makes the decode exact instead of a guess. The header is:
+
+     [12 bytes per-path junk]
+     [02 00 00 00 00 01]   <- literal marker, always these six bytes
+     [uint32 A]            <- record length + 8
+     [00 00 00 00]
+     [uint32 B]            <- record length, i.e. A - 8
+     [uint8  closed]       <- 1 = closed loop, 0 = open stroke
+     [int32  segs]         <- SEGMENT count, one less than the anchor count
+     [segs+1 anchors][5-byte trailer]
+
+   The length field is the whole point: after reading segs+1 anchors we know
+   where the record must have ended, and B says where it did end. If those two
+   numbers do not agree exactly, the "record" was a coincidence in unrelated
+   bytes and it is thrown away. Nothing is kept on a hunch.
+
+   Two things this fixes over the old scan, both seen on a real customer file
+   (a 239-path donkey drawing that used to import as 106 paths):
+     - segs is a segment count, so an anchor-count read drops the LAST anchor
+       of every single path and the closing curve comes in wrong.
+     - a byte-by-byte scan with no header to anchor on accepts runs of padding
+       as "paths" at 0,0 and then resumes reading PAST the real records those
+       phantoms swallowed — which is what silently lost more than half the art.
+
+   Older .studio files that carry no marker still work: nothing matches, and we
+   fall through to the original heuristic scan below, and failing that to
+   tracing the embedded preview picture. */
+function studioRecords(buf){
+  const u8a=new Uint8Array(buf),dv=new DataView(buf),n=buf.byteLength;
+  const f32=o=>dv.getFloat32(o,true),u32=o=>dv.getUint32(o,true),i32=o=>dv.getInt32(o,true);
+  const sane=(x,y)=>x>-1e4&&x<1e4&&y>-1e4&&y<1e4&&x===x&&y===y;
+  function readPt(o){
+    if(o+10>n)return null;
+    const x=f32(o),y=f32(o+4);
+    if(!sane(x,y))return null;
+    o+=8;const hs=[];
+    for(let k=0;k<2;k++){
+      const fl=u8a[o];
+      if(fl===1){if(o+9>n)return null;hs.push([f32(o+1),f32(o+5)]);o+=9;}
+      else if(fl===0){hs.push(null);o+=1;}
+      else return null;
+    }
+    return {x,y,h1:hs[0],h2:hs[1],end:o};
+  }
+  const out=[];
+  for(let i=0;i+23<n;i++){
+    if(u8a[i]!==2||u8a[i+1]!==0||u8a[i+2]!==0||u8a[i+3]!==0||u8a[i+4]!==0||u8a[i+5]!==1)continue;
+    const A=u32(i+6),B=u32(i+14),closed=u8a[i+18];
+    if(u32(i+10)!==0||A-B!==8||closed>1)continue;
+    const o=i+19,segs=i32(o);
+    if(segs<1||segs>200000)continue;
+    let p=o+4,good=true;const pts=[];
+    for(let j=0;j<=segs;j++){const r=readPt(p);if(!r){good=false;break;}pts.push(r);p=r.end;}
+    if(!good)continue;
+    /* the reconciliation: B must land exactly on the 5-byte trailer */
+    if(B-(p-o)!==5)continue;
+    pts.open=!closed;
+    out.push(pts);
+    i=p+4;            /* +4 then the loop's ++ steps clear of the trailer */
+  }
+  return out;
+}
 /* Read the CUT GEOMETRY straight out of a .studio3 — the exact anchor points
    and Bezier handles Silhouette saved, in millimetres. No tracing, so the
    result is perfect: what Silhouette would have cut, this cuts.
-   The format is undocumented; what is decoded here was worked out from real
-   files: paths are stored as [int32 pointCount] then per point
+   Record-accurate decoding is tried first (studioRecords above). The scan that
+   follows is the original heuristic one, kept only for files with no record
+   markers: paths are read as [int32 pointCount] then per point
    [float32 x,y][flag byte, 1 = a relative in-handle follows][flag byte,
    1 = a relative out-handle follows]. Anything that doesn't parse that way
    is skipped, and if no geometry parses at all we fall back to tracing the
@@ -9757,18 +9862,24 @@ function studioVectors(buf){
     }
     return kept;
   }
-  const paths=[];let o=1024;
-  while(o<limit-12){
-    const r=tryPath(o);
-    if(r&&r.pts.length>=3){for(const c of splitBad(r.pts))paths.push(c);o=r.end;}
-    else o++;
+  /* the exact, self-checking decode gets first refusal */
+  const exact=studioRecords(buf);
+  const paths=[];
+  if(exact.length){for(const p of exact)paths.push(p);}
+  else{
+    let o=1024;
+    while(o<limit-12){
+      const r=tryPath(o);
+      if(r&&r.pts.length>=3){for(const c of splitBad(r.pts))paths.push(c);o=r.end;}
+      else o++;
+    }
   }
   if(!paths.length)return null;
   /* Scanning an undocumented format produces the odd false positive: a few
      bytes of metadata that happen to parse as a tiny "path" sitting nowhere
      near the artwork. Real specks live IN the design (mud drops beside the
      donkey); junk lives alone. Anything tiny and isolated is dropped. */
-  {
+  if(!exact.length){
     const span=p=>{let a=1e9,b=1e9,c=-1e9,d2=-1e9;
       for(const q of p){if(q.x<a)a=q.x;if(q.x>c)c=q.x;if(q.y<b)b=q.y;if(q.y>d2)d2=q.y;}
       return {a,b,c,d:d2,s:(c-a)+(d2-b)};};
