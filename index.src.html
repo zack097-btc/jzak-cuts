@@ -159,9 +159,11 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
 <div class="menubar">
   <div class="brand">JZAK<span>Cuts</span></div>
   <div class="menu"><span>File</span><div class="submenu">
+    <a data-act="newjob">New Job</a>
     <a data-act="import">Import File…</a>
     <a data-act="addtext">Add Text</a>
-    <hr><a data-act="savejob">Save Job</a><a data-act="loadjob">Load Job</a>
+    <hr><a data-act="savefile">Save to File…&nbsp;&nbsp;(Ctrl+S)</a><a data-act="openfile">Open File…&nbsp;&nbsp;(Ctrl+O)</a>
+    <hr><a data-act="savejob">Save into Job Library</a><a data-act="loadjob">Load from Job Library</a>
     <hr><a data-act="exportsvg">Export SVG</a><a data-act="plt">Download .plt (cut file)</a>
   </div></div>
   <div class="menu"><span>Edit</span><div class="submenu">
@@ -176,6 +178,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     <hr><a data-act="disth">Space Across Evenly</a><a data-act="distv">Space Down Evenly</a>
     <hr><a data-act="arrfront">Bring to Front</a><a data-act="arrforward">Bring Forward</a><a data-act="arrbackward">Send Backward</a><a data-act="arrback">Send to Back</a>
     <hr><a data-act="weld">Weld (merge overlaps)</a><a data-act="subtract">Subtract</a><a data-act="intersect">Keep Overlap Only</a><a data-act="exclude">Exclude Overlap</a>
+    <hr><a data-act="breakapart">Break Apart (separate the pieces)</a><a data-act="combine">Combine into One Piece</a>
     <hr><a data-act="offsetout">Offset Outward (contour cut)…</a><a data-act="offsetin">Offset Inward…</a>
     <hr><a data-act="grid">Make Grid (batch)</a><a data-act="weed">Toggle Weed Border</a><a data-act="reg">Toggle Registration Marks</a>
   </div></div>
@@ -185,14 +188,18 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     <hr><a data-act="calib">Calibration Wizard…</a>
     <hr><a data-act="viewhpgl">View HPGL</a>
   </div></div>
-  <div class="menu"><span>View</span><div class="submenu">
+  <div class="menu"><span>Window</span><div class="submenu">
     <a data-act="popall">Send All Tool Panels to Second Monitor</a>
     <a data-act="popnone">Bring All Tool Panels Back</a>
     <hr><a data-act="popwin">Open / Focus the Tools Window</a>
     <hr><a data-act="nodetool">Edit Points (wireframe editor)</a>
+    <a data-act="erasetool">Eraser</a>
   </div></div>
   <div class="menu"><span>Help</span><div class="submenu"><a data-act="about">About JZAK Cuts</a></div></div>
   <div class="menuspacer"></div>
+  <!-- The build number, on screen, always. Without it there is no way to tell
+       from the shop floor whether the machine has the fix or the bug. -->
+  <div id="verBadge" title="Build version" style="font-size:11px;color:#8fa0b6;padding:0 10px;letter-spacing:.3px;user-select:text"></div>
   <div class="status-conn"><div class="dot" id="dot"></div><span id="statusText">Cutter not connected</span></div>
 </div>
 
@@ -201,8 +208,9 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
   <button class="tbtn" data-act="import" title="Import a file to cut or trace">⤓ Import</button>
   <button class="tbtn" data-act="addtext" title="Add lettering">A Text</button>
   <div class="sep"></div>
-  <button class="tbtn" data-act="savejob" title="Save job">💾 Save</button>
-  <button class="tbtn" data-act="loadjob" title="Load job">📂 Load</button>
+  <button class="tbtn" data-act="savefile" title="Save this job to a file on the disk (Ctrl+S). This is the copy you can back up, email and keep in a customer folder.">💾 Save</button>
+  <button class="tbtn" data-act="openfile" title="Open a .jzak job file from the disk (Ctrl+O)">📂 Open</button>
+  <span id="docTitle" class="val" title="Everything is saved" style="min-width:90px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.75">Untitled job</span>
   <div class="sep"></div>
   <button class="tbtn" data-act="zout">−</button>
   <span id="zoomLabel" class="val" style="min-width:46px;text-align:center">100%</span>
@@ -224,6 +232,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     <div class="tool" data-tool="text" title="Text">A</div>
     <div class="tool" data-tool="import" title="Import / Trace">⤓</div>
     <div class="tool" data-tool="node" title="Edit points — drag anchors &amp; handles, double-click a point to switch corner/smooth, double-click a line to add a point, Delete to remove">✎</div>
+    <div class="tool" data-tool="erase" title="Eraser — drag to cut material away. Hold Shift for a straight line, [ and ] to change the width.">◍</div>
     <div class="tool" data-tool="pan" title="Pan">✋</div>
     <div class="tool" data-tool="zoom" title="Zoom">🔍</div>
     <div class="toolsep"></div>
@@ -255,7 +264,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
     <div class="grp" id="panelImport" style="display:none">
       <h3>Import / Trace</h3>
       <label>Any file — vector, image, or Silhouette</label>
-      <input type="file" id="vecFile" accept=".svg,.dxf,.png,.jpg,.jpeg,.gif,.bmp,.webp,.studio,.studio3">
+      <input type="file" id="vecFile" accept=".svg,.dxf,.pdf,.eps,.ai,.ps,.png,.jpg,.jpeg,.gif,.bmp,.webp,.studio,.studio3">
       <div id="traceCtl" style="display:none">
         <div class="tpv"><canvas id="tracePrev" width="280" height="170"></canvas>
           <div class="tpvbar"><span id="tracePrevWhat">Traced result</span><span class="menuspacer" style="flex:1"></span><span id="tracePrevInfo">—</span></div>
@@ -307,7 +316,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
         <div class="btns"><button id="retraceBtn" class="blue" style="flex:1">Re-trace</button><button id="tracePlaceBtn" class="green" style="flex:1">Place on Mat</button></div>
         <div class="hint">The preview retraces as you drag. <b>Despeckle</b> throws away dust and scanner grain; <b>Denoise</b> softens JPEG mush before the edges are found; <b>Drop the background color</b> knocks out the paper or backdrop the art was shot on.</div>
       </div>
-      <div class="hint">SVG/DXF as vectors. Silhouette <b>.studio3</b> imports its real cut lines as exact vectors — no tracing. Images are auto-traced — colored art comes in as one layer per vinyl color, in registration. (PDF/AI: export to SVG/PNG first.)</div>
+      <div class="hint">SVG, DXF, <b>PDF</b> and <b>EPS</b> come in as real vectors. Silhouette <b>.studio3</b> imports its actual cut lines — no tracing. Images are auto-traced; colored art comes in as one layer per vinyl color, in registration. A PDF or EPS with <i>live text</i> has no outlines to cut — convert the type to outlines first and it will import.</div>
     </div>
 
     <!-- POINT EDITOR panel -->
@@ -390,6 +399,26 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <div style="font-size:11px;color:#888">Shift-click or drag a box on the mat to select several · Ctrl+A selects all</div>
     </div>
 
+    <!-- ERASER panel -->
+    <div class="grp" id="panelErase" style="display:none">
+      <h3>Eraser</h3>
+      <div style="font-size:11.5px;color:#444;margin:0 0 6px">Drag across the artwork to take material away. The cut line closes itself back up, so what is left is still a real cuttable shape — not a picture with a hole in it.</div>
+      <div class="row" style="align-items:flex-end">
+        <div><label>Width (in)</label><input type="number" id="erWidth" value="0.125" step="0.01" min="0.005"></div>
+        <div><label>Tip</label><select id="erCap"><option value="round">Round</option><option value="square">Square</option></select></div>
+      </div>
+      <label>Erases</label>
+      <select id="erScope">
+        <option value="all">Everything the stroke touches</option>
+        <option value="sel">Only the selected piece</option>
+      </select>
+      <div class="agrid four" style="margin-top:6px">
+        <button data-act="erasesmall" style="grid-column:span 2" title="Set the eraser to a fine 1/32 in tip">Fine 0.031"</button>
+        <button data-act="erasebig" style="grid-column:span 2" title="Set the eraser to a broad 1/2 in tip">Broad 0.500"</button>
+      </div>
+      <div style="font-size:11px;color:#888">Hold <b>Shift</b> to erase in a straight line from where you started. <b>[</b> and <b>]</b> step the width down and up. One drag is one undo step.</div>
+    </div>
+
     <div class="grp" id="panelShape">
       <h3>Weld, Shape &amp; Offset</h3>
       <label>Combine <span style="color:#888;font-weight:400">(overlaps become one cut line)</span></label>
@@ -398,6 +427,11 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
         <button data-bool="subtract" title="Punch the pieces on top out of the piece underneath">Subtract</button>
         <button data-bool="intersect" title="Keep only the part where they overlap">Overlap</button>
         <button data-bool="exclude" title="Keep everything except the overlap">Exclude</button>
+      </div>
+      <label>Compound pieces <span style="color:#888;font-weight:400">(nothing is melted — outlines are kept exactly)</span></label>
+      <div class="agrid" style="grid-template-columns:1fr 1fr" id="compGrid">
+        <button data-act="breakapart" title="Split one piece into its separate islands. Holes stay with the shape they belong to — a B breaks out as a B, not as a B and two loose blobs.">Break Apart</button>
+        <button data-act="combine" title="Make several pieces into one compound piece. Overlaps become holes; use Weld instead if you want them melted into solid.">Combine</button>
       </div>
       <label>Offset / contour cut</label>
       <div class="row" style="align-items:flex-end">
@@ -464,7 +498,9 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <div class="row" style="align-items:flex-end"><div><label>Save current as</label><input type="text" id="jobName" placeholder="job name"></div><div style="flex:0 0 auto"><button id="jobSave">Save</button></div></div>
       <label>Saved jobs</label><select id="jobSelect"><option value="">—</option></select>
       <div class="btns"><button id="jobLoad" style="flex:1">Load</button><button id="jobDel" style="flex:1">Delete</button><button id="jobExport" style="flex:1">Export</button><button id="jobImportBtn" style="flex:1">Import</button></div>
-      <input type="file" id="jobImport" accept=".json" style="display:none">
+      <input type="file" id="jobImport" accept=".jzak,.json" style="display:none">
+      <input type="file" id="jobOpenFile" accept=".jzak,.json" style="display:none">
+      <p class="hint" style="margin:8px 0 0">The library lives inside the program. For anything you need to keep, back up or send to somebody, use <b>File ▸ Save to File…</b> — that writes a real <b>.jzak</b> file onto the disk.</p>
     </div>
   </div>
 </div>
@@ -486,7 +522,17 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
 <!--JZTRACE_JS-->
 <!--CLIPPER_JS-->
 <script>
-/* ============================ JZAK Cuts v5 (VinylMaster-style) ============================ */
+/* ================================ JZAK Cuts ================================
+   ONE version string for the whole product. It must match the version in
+   desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
+   agree and refuses to build if they drift, because a shop that cannot tell
+   which build is on the machine cannot tell whether a bug has been fixed. */
+const JZAK_VERSION="10.6.0";
+try{
+  const _vb=document.getElementById("verBadge");
+  if(_vb)_vb.textContent="v"+JZAK_VERSION;
+  document.title="JZAK Cuts "+JZAK_VERSION+" — Vinyl Cutting Studio";
+}catch(e){}
 const FONT_BASE="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/";
 /* Tool panels can be sent to a second window on another monitor. When that
    happens the panel's DOM moves out of this document, so every lookup has to
@@ -496,13 +542,78 @@ const FONT_BASE="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/";
 const POPW={win:null,mode:null,ids:[],timer:null};
 const $=id=>{const e=document.getElementById(id);if(e)return e;
   const w=POPW.win;if(w&&!w.closed&&w.document)return w.document.getElementById(id);return null;};
-const state={objects:[],selId:null,selIds:[],port:null,writer:null,connected:false,tool:"select"};
+const state={objects:[],selId:null,selIds:[],port:null,writer:null,connected:false,tool:"select",
+             docName:null,portName:null,everConnected:false};
 const view={zoom:1,panx:0,pany:0};
 let nextId=1;
 const VINYL=["#111111","#ffffff","#c0392b","#e74c3c","#e67e22","#f1c40f","#2ecc71","#27ae60","#1e6fe0","#2c3e90","#8e44ad","#16a085","#7f8c8d","#c0c0c0","#795548","#ff8fb0"];
 
-function lsGet(k){ try{return JSON.parse(localStorage.getItem(k)||"{}");}catch(e){return (lsGet._m=lsGet._m||{})[k]||{};} }
-function lsSet(k,o){ try{localStorage.setItem(k,JSON.stringify(o));}catch(e){(lsGet._m=lsGet._m||{})[k]=o;} }
+/* localStorage is for SETTINGS ONLY - things measured in bytes, like which
+ * preset was last picked. It must never hold a design again.
+ *
+ * It held the job library until 10.6.0 and that was a data-loss bug, not an
+ * inefficiency. localStorage caps an origin at about 5 MB. One real job - the
+ * Wayback door decal - serialises to 1.40 MB, because a snapshot writes out
+ * every one of its 36,238 flattened points as text. Three jobs filled the box.
+ * The fourth threw QuotaExceededError, and the catch below used to swallow it
+ * into an in-memory object: the save looked like it worked, the dropdown
+ * updated, and the work was gone on the next refresh. Measured, not guessed -
+ * see probesave.cjs.
+ *
+ * So lsSet now REPORTS a failure instead of hiding one, and designs live in
+ * IndexedDB (jzdb, below), which is bounded by free disk rather than 5 MB.
+ */
+function lsGet(k){ try{return JSON.parse(localStorage.getItem(k)||"{}");}catch(e){return {};} }
+function lsSet(k,o){
+  try{ localStorage.setItem(k,JSON.stringify(o)); return true; }
+  catch(e){ console.warn("setting not saved:",k,e&&e.name); return false; }
+}
+
+/* ---- jzdb: where designs actually live -------------------------------------
+ *
+ * IndexedDB, two stores. "jobs" is the library, keyed by job name. "sys" holds
+ * the autosave record and nothing else. Values are stored as live objects via
+ * the structured clone algorithm, so there is no JSON string to blow a length
+ * limit and no parse step to corrupt.
+ *
+ * Every call resolves to a RESULT rather than throwing into the void, because
+ * the entire point of this rewrite is that a failed save has to be visible.
+ */
+const jzdb = (function(){
+  const NAME="jzakcuts", VER=1;
+  let dbp=null;
+  function open(){
+    if(dbp)return dbp;
+    dbp=new Promise((res,rej)=>{
+      let rq;
+      try{ rq=indexedDB.open(NAME,VER); }catch(e){ rej(e); return; }
+      rq.onupgradeneeded=()=>{const db=rq.result;
+        if(!db.objectStoreNames.contains("jobs"))db.createObjectStore("jobs");
+        if(!db.objectStoreNames.contains("sys"))db.createObjectStore("sys");};
+      rq.onsuccess=()=>res(rq.result);
+      rq.onerror=()=>rej(rq.error||new Error("IndexedDB refused to open"));
+      rq.onblocked=()=>rej(new Error("Another JZAK Cuts window is holding the database. Close the other window and try again."));
+    });
+    return dbp;
+  }
+  function tx(store,mode,fn){
+    return open().then(db=>new Promise((res,rej)=>{
+      const t=db.transaction(store,mode),s=t.objectStore(store);
+      let out;
+      try{ out=fn(s); }catch(e){ rej(e); return; }
+      t.oncomplete=()=>res(out&&out.result!==undefined?out.result:out);
+      t.onerror=()=>rej(t.error||new Error("write failed"));
+      t.onabort=()=>rej(t.error||new Error("write aborted - the disk may be full"));
+    }));
+  }
+  return {
+    get:(store,key)=>tx(store,"readonly",s=>s.get(key)),
+    put:(store,key,val)=>tx(store,"readwrite",s=>s.put(val,key)),
+    del:(store,key)=>tx(store,"readwrite",s=>s.delete(key)),
+    keys:(store)=>tx(store,"readonly",s=>s.getAllKeys()),
+    available(){ try{ return typeof indexedDB!=="undefined" && !!indexedDB; }catch(e){ return false; } }
+  };
+})();
 function b64ToBuf(b){const s=atob(b),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u.buffer;}
 function bufToB64(buf){const b=new Uint8Array(buf);let s="";for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s);}
 
@@ -549,14 +660,27 @@ function pickPort(ports){
 const CutterIO = DESKTOP ? {
   label:"USB serial",
   supported(){ return true; },
-  async connect(){
+  /* `prefer` is the port we were on before the cutter was switched off. A
+     power-cycled plotter almost always comes back as the same COM port, so
+     reconnecting should not make anyone pick from a list a second time. */
+  async connect(prefer){
     const ports = await nativeCall("list_ports");
-    if(!ports.length) throw new Error("No serial ports found. Plug the cutter in and switch it on.");
+    if(!ports.length) throw new Error("No serial ports found. Check the cutter is plugged in and switched on, then try again.");
+    /* Only a RECONNECT needs the stale handle dropped first. On a cold start
+       there is nothing open, and calling close_port anyway would be a pointless
+       round trip on the one path that runs every single day. */
+    const stale = state.everConnected;
+    if(prefer && ports.some(p=>p.name===prefer)){
+      if(stale){ try{ await nativeCall("close_port"); }catch(e){} }
+      await nativeCall("open_port", {name:prefer, baud:9600});
+      return prefer;
+    }
     /* one obvious candidate: take it. Otherwise let the shop floor say. */
     const usb = ports.filter(p=>p.usb);
     const list = usb.length ? usb : ports;
     const name = list.length===1 ? list[0].name : await pickPort(list);
     if(!name) return null;
+    if(stale){ try{ await nativeCall("close_port"); }catch(e){} }
     await nativeCall("open_port", {name:name, baud:9600});
     return name;
   },
@@ -565,12 +689,31 @@ const CutterIO = DESKTOP ? {
 } : {
   label:"Web Serial",
   supported(){ return "serial" in navigator; },
-  async connect(){
-    const port = await navigator.serial.requestPort();
+  async connect(prefer){
+    /* Chrome remembers ports you have already granted. After a power cycle the
+       same device reappears in getPorts(), so a reconnect can reuse it silently
+       instead of making you pick the cutter out of a dialog again. */
+    let port=null;
+    if(prefer){
+      try{
+        const known=await navigator.serial.getPorts();
+        port=known.find(p=>{const i=p.getInfo&&p.getInfo();
+          return i&&i.usbVendorId!=null&&(i.usbVendorId+":"+i.usbProductId)===prefer;})||null;
+      }catch(e){ port=null; }
+    }
+    if(!port) port = await navigator.serial.requestPort();
     try{ await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"hardware"}); }
-    catch(e){ await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"none"}); }
+    catch(e){
+      if(e&&e.name==="InvalidStateError"){                 /* stale handle: close and retry once */
+        try{ await port.close(); }catch(_){}
+        await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"none"});
+      }else{
+        await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"none"});
+      }
+    }
     state.port = port; state.writer = port.writable.getWriter();
-    return (port.getInfo && port.getInfo().usbProductId!=null) ? "USB serial" : "serial port";
+    const i = port.getInfo && port.getInfo();
+    return (i&&i.usbVendorId!=null) ? (i.usbVendorId+":"+i.usbProductId) : "serial port";
   },
   async write(str){
     const b = new TextEncoder().encode(str);
@@ -582,22 +725,97 @@ const CutterIO = DESKTOP ? {
   }
 };
 function checkSerial(){const w=$("serialWarn");if(!CutterIO.supported()){w.classList.add("show");w.innerHTML="⚠ This browser can't reach the cutter (Web Serial needed). Use <b>Chrome</b> or <b>Edge</b>, or install the desktop app. You can still design here and Download .plt.";$("connectBtn").disabled=true;}}
+/* ---- the link to the cutter ------------------------------------------------
+ *
+ * A plotter gets switched off. It gets switched off mid-job, it gets switched
+ * off overnight, and it gets switched off because someone kicked the bench.
+ * Until 10.6.0 the only way back was to refresh the page, and refreshing the
+ * page threw away the design - so a power cycle cost the mat. That is a
+ * software failure dressed up as a hardware event.
+ *
+ * The link is now allowed to die and be rebuilt in place. Nothing about the
+ * document depends on the port being open, so nothing about the document is
+ * touched when it closes.
+ */
+function setLink(on,where){
+  state.connected=!!on;
+  const dot=$("dot"),st=$("statusText"),cb=$("connectBtn"),sb=$("sendBtn");
+  if(on){
+    state.everConnected=true; state.portName=where||state.portName;
+    dot.classList.add("on");
+    st.textContent="Cutter connected · "+(where||"serial")+" · 9600 baud";
+    cb.disabled=false; cb.textContent="Disconnect";
+    cb.title="Close the port. Your design stays exactly as it is.";
+    sb.disabled=false;
+  }else{
+    dot.classList.remove("on");
+    /* If this browser cannot reach a serial port at all, checkSerial() has
+       already said so and greyed the button out. Do not quietly re-enable it. */
+    cb.disabled=!CutterIO.supported();
+    cb.textContent=state.everConnected?"⟳ Reconnect":"Connect Cutter";
+    cb.title=state.everConnected
+      ?"The cutter went away. Switch it back on and press this — your design is untouched."
+      :"Open the port to the cutter";
+    st.textContent=state.everConnected
+      ?"Cutter disconnected · your design is safe · press Reconnect when it is back on"
+      :"Not connected";
+    sb.disabled=true;
+  }
+}
+/* Called when the port drops underneath us rather than by request. */
+function linkLost(why){
+  if(!state.connected&&!state.everConnected)return;
+  setLink(false);
+  toast("Lost the cutter"+(why?" ("+why+")":"")+". Your design is safe — switch the cutter back on and press Reconnect.",8000);
+}
 async function connect(){
+  if(state.connected){                              /* the button says Disconnect */
+    await CutterIO.disconnect(); setLink(false);
+    toast("Disconnected. The design is untouched.");
+    return;
+  }
+  const btn=$("connectBtn"),was=btn.textContent;
+  btn.disabled=true; btn.textContent="Connecting…";
   try{
-    const where = await CutterIO.connect();
-    if(where===null) return;                       /* user backed out */
-    state.connected=true;
-    $("dot").classList.add("on");
-    $("statusText").textContent="Cutter connected · "+where+" · 9600 baud";
-    $("connectBtn").disabled=true; $("sendBtn").disabled=false;
+    const where = await CutterIO.connect(state.portName);
+    if(where===null){ setLink(false); return; }     /* user backed out */
+    setLink(true,where);
+    toast("Cutter connected on "+where);
   }catch(err){
-    if(err&&err.name==="NotFoundError")return;     /* Chrome's picker, dismissed */
-    alert("Could not connect: "+(err.message||err));
+    if(err&&err.name==="NotFoundError"){ setLink(false); return; }   /* Chrome's picker, dismissed */
+    setLink(false);
+    alert("Could not connect to the cutter.\n\n"+(err&&err.message||err)+
+      "\n\nWorth checking, in order: the cutter is switched on, the USB lead is in, "+
+      "and no other program is holding the port.\n\nYour design has not been touched.");
+  }finally{
+    btn.disabled=false; if(btn.textContent==="Connecting…")btn.textContent=was;
   }
 }
 async function writeToCutter(str){
-  if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}
-  await CutterIO.write(str);
+  if(!state.connected){
+    alert(state.everConnected
+      ?"The cutter is not connected right now. Switch it on and press Reconnect — your design is safe."
+      :"Connect the cutter first (Cut ▸ Connect Cutter).");
+    return false;
+  }
+  try{ await CutterIO.write(str); return true; }
+  catch(err){
+    /* A write that fails means the port is gone, whatever the message says. */
+    try{ await CutterIO.disconnect(); }catch(e){}
+    linkLost(err&&err.message?String(err.message).slice(0,60):"");
+    alert("The cutter stopped responding partway through.\n\n"+(err&&err.message||err)+
+      "\n\nYour design is still here and nothing has been lost. Switch the cutter on, "+
+      "press Reconnect, and send it again.\n\nIf it had already started cutting, reload the "+
+      "vinyl and re-origin before resending.");
+    return false;
+  }
+}
+/* Chrome tells us when the USB device physically goes away. */
+if(!DESKTOP&&typeof navigator!=="undefined"&&navigator.serial&&navigator.serial.addEventListener){
+  navigator.serial.addEventListener("disconnect",ev=>{
+    if(state.port&&ev&&ev.target&&ev.target!==state.port)return;
+    state.writer=null; state.port=null; linkLost("unplugged");
+  });
 }
 
 /* ---- geometry ---- */
@@ -610,7 +828,12 @@ function addObject(subpaths,name,height){histPush();const bb=bboxOf(subpaths);
   /* a design keeps whatever size it really is — six feet is six feet. Only a
      nonsense size (a 2000px image "height", a degenerate speck) falls back to
      a workable default. */
-  let h=height;if(!h||h>240||h<0.05)h=(bb.h>=0.05&&bb.h<=240?bb.h:4);const o={id:nextId++,subpaths,bbox:bb,name:name||("object "+(state.objects.length+1)),posX:1,posY:1,height:h,width:bb.w*(h/(bb.h||1)),rotation:0,mirror:false,color:"#111111"};state.objects.push(o);state.selIds=[o.id];state.selId=o.id;setTool("select");renderObjList();syncInputs();resetView();draw();return o;}
+  const CEIL=1200;   /* 100 feet. A banner run is a real job; 240" was not a real limit. */
+  let h=height;
+  if(!h||!isFinite(h)||h>CEIL||h<0.05){
+    h=(isFinite(bb.h)&&bb.h>=0.05&&bb.h<=CEIL)?bb.h:4;
+    if(typeof toast==="function")toast("That file's height read as "+(isFinite(height)?height.toFixed(1):"?")+" in \u2014 outside anything cuttable, so it was placed at "+h.toFixed(2)+" in. Check its units before you cut.",10000);
+  }const o={id:nextId++,subpaths,bbox:bb,name:name||("object "+(state.objects.length+1)),posX:1,posY:1,height:h,width:bb.w*(h/(bb.h||1)),rotation:0,mirror:false,color:"#111111"};state.objects.push(o);state.selIds=[o.id];state.selId=o.id;setTool("select");renderObjList();syncInputs();resetView();draw();return o;}
 function selected(){return state.objects.find(o=>o.id===state.selId)||null;}
 /* ---- multi-selection. state.selId is the PRIMARY (last-clicked) piece and is
    what the Size & Position panel edits; state.selIds is the whole set. ---- */
@@ -708,7 +931,142 @@ function clipToLines(paths){const out=[];
   for(const p of paths){if(!p||p.length<3)continue;
     const L=p.map(pt=>[pt.X/CLIP_SC,pt.Y/CLIP_SC]);L.push([L[0][0],L[0][1]]);out.push(L);}
   return out;}
-function objClip(o){return linesToClip(objPolylines(o));}
+/* ---- Ring winding ---------------------------------------------------------
+   This one silently destroyed artwork, so it is worth writing down.
+
+   A letter like B is one shape with two holes. There are two conventions for
+   saying which rings are holes. Illustrator's default, and what nearly every
+   SVG in the wild carries, is fill-rule:evenodd - every ring is wound the same
+   direction and the nesting alone says what is a hole. The boolean engine in
+   here counts winding instead, so handed evenodd artwork it saw three rings
+   all turning the same way, added them up, and filled the counters in solid.
+   Weld, subtract, intersect and offset all went through it. The B came off the
+   mat as a blob, and there was nothing on screen to warn you, because the
+   preview draws with evenodd and looked perfect.
+
+   The fix is to decide each ring's direction from how deeply it is NESTED:
+   outermost ring turns one way, a ring inside it turns the other, a ring
+   inside that turns back again. That is exactly what evenodd means, expressed
+   in the winding the engine wants.
+
+   Two things make this safe to run on everything. It is idempotent - artwork
+   that was already wound correctly (fonts, JZAK Trace output) comes back
+   untouched. And it only looks at CONTAINMENT, so two script letters that
+   merely OVERLAP are both still outermost, both still wound the same way, and
+   weld still melts them together the way you want. */
+function ringArea2(L){let a=0;for(let i=0,n=L.length;i<n;i++){const p=L[i],q=L[(i+1)%n];a+=p[0]*q[1]-q[0]*p[1];}return a;}
+function ringBB(L){let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const p of L){if(p[0]<a)a=p[0];if(p[1]<b)b=p[1];if(p[0]>c)c=p[0];if(p[1]>d)d=p[1];}return [a,b,c,d];}
+function ptInRing(x,y,L){let inside=false;for(let i=0,n=L.length,j=n-1;i<n;j=i++){const xi=L[i][0],yi=L[i][1],xj=L[j][0],yj=L[j][1];
+  if((yi>y)!==(yj>y)&&x<xi+(y-yi)/(yj-yi)*(xj-xi))inside=!inside;}return inside;}
+/* Rings in real artwork do not cross each other, so one vertex would settle it -
+   but a vertex can land exactly on the other ring's edge in tangent art, so
+   sample a handful and take the majority. */
+function ringInRing(A,B){let hit=0,n=0;const step=Math.max(1,Math.floor(A.length/5));
+  for(let i=0;i<A.length&&n<5;i+=step){n++;if(ptInRing(A[i][0],A[i][1],B))hit++;}
+  return n?hit*2>n:false;}
+function normalizeWinding(lines){
+  const R=[];
+  for(const L of lines){if(!L||L.length<3)continue;const a2=ringArea2(L);if(Math.abs(a2)<1e-12)continue;R.push({L,a2,bb:ringBB(L)});}
+  if(R.length<2)return R.map(r=>r.L);
+  const out=[];
+  for(let i=0;i<R.length;i++){
+    let depth=0;const a=R[i];
+    for(let j=0;j<R.length;j++){
+      if(i===j)continue;const b=R[j];
+      if(a.bb[0]<b.bb[0]||a.bb[1]<b.bb[1]||a.bb[2]>b.bb[2]||a.bb[3]>b.bb[3])continue; /* cheap reject */
+      if(Math.abs(b.a2)<=Math.abs(a.a2))continue;                                      /* a hole cannot contain its shell */
+      if(ringInRing(a.L,b.L))depth++;
+    }
+    const want=(depth%2===0)?1:-1;
+    out.push(((a.a2>0?1:-1)===want)?a.L:a.L.slice().reverse());
+  }
+  return out;
+}
+function objClip(o){return linesToClip(normalizeWinding(objPolylines(o)));}
+/* ---- compound pieces: Break Apart and Combine -------------------------------
+ *
+ * A boolean, a trace or an import hands back ONE piece that may be several
+ * separate islands. Erase through the middle of a rectangle and you get two
+ * halves that are, as far as the app is concerned, still one object. For
+ * CUTTING that makes no difference at all - the blade follows every ring
+ * either way. For WORKING it does, because you cannot pick up one half and
+ * move it on its own.
+ *
+ * Splitting is deliberately NOT done automatically by the eraser, by weld or
+ * by import. A 132-ring block of lettering is one object on purpose; splitting
+ * it the moment the eraser touched one corner would drop ninety-eight loose
+ * objects into the list and the layout would be gone. Illustrator, Inkscape
+ * and Silhouette all draw the line in the same place: the operation preserves
+ * the compound, and a separate Break Apart releases it when you actually want
+ * the pieces. So the eraser only TELLS you it made new islands.
+ *
+ * Holes travel with the shell that contains them. Break a letter B apart and
+ * you get one B, not a B and two loose blobs - which is the whole reason this
+ * is nesting-aware rather than one-object-per-ring. A ring nested two deep -
+ * an island sitting inside a counter, like the bar of a stencil A - is a
+ * genuinely separate piece of vinyl and does become its own object.
+ */
+function islandGroups(lines){
+  const R=[];
+  for(const L of lines){if(!L||L.length<3)continue;const a2=ringArea2(L);if(Math.abs(a2)<1e-12)continue;R.push({L,a2:Math.abs(a2),bb:ringBB(L)});}
+  const n=R.length;
+  if(n<2)return R.map(r=>[r.L]);
+  const depth=new Array(n).fill(0),parent=new Array(n).fill(-1);
+  for(let i=0;i<n;i++){
+    const a=R[i];let best=-1,bestA=Infinity;
+    for(let j=0;j<n;j++){
+      if(i===j)continue;const b=R[j];
+      if(a.bb[0]<b.bb[0]||a.bb[1]<b.bb[1]||a.bb[2]>b.bb[2]||a.bb[3]>b.bb[3])continue; /* cheap reject */
+      if(b.a2<=a.a2)continue;                                                          /* a hole cannot contain its shell */
+      if(!ringInRing(a.L,b.L))continue;
+      depth[i]++;
+      if(b.a2<bestA){bestA=b.a2;best=j;}                                               /* immediate parent = smallest container */
+    }
+    parent[i]=best;
+  }
+  const g=new Map();
+  for(let i=0;i<n;i++){
+    const k=(depth[i]%2===0)?i:(parent[i]>=0?parent[i]:i);
+    if(!g.has(k))g.set(k,[]);
+    g.get(k).push(R[i].L);
+  }
+  /* biggest island first, so the object list reads the way the eye scans it */
+  return [...g.entries()].sort((A,B)=>R[B[0]].a2-R[A[0]].a2).map(e=>e[1]);
+}
+function islandCount(lines){return islandGroups(lines).length;}
+function breakApartSel(){
+  const os=selObjs();if(!os.length){alert("Select a piece to break apart first.");return;}
+  const keep=new Set(os.map(o=>o.id)),out=[],made=[];let split=0;
+  for(const o of state.objects){
+    if(!keep.has(o.id)){out.push(o);continue;}
+    const gs=islandGroups(objPolylines(o));
+    if(gs.length<2){out.push(o);continue;}
+    split++;
+    gs.forEach((rings,i)=>{const nu=objFromWorld(rings,(o.name||"shape")+" "+(i+1),o.color);
+      if(nu){out.push(nu);made.push(nu.id);}});
+  }
+  if(!split){alert("That is already one solid piece — there is nothing to break apart.\n\nBreak Apart only splits a piece that is made of islands that do not touch, such as two halves left behind by the eraser.");return;}
+  histPush();
+  state.objects=out;
+  renderObjList();setSel(made);syncInputs();draw();
+  toast("Broken into "+made.length+" separate pieces.");
+}
+function combineSel(){
+  const os=selObjs();
+  if(os.length<2){alert("Pick at least two pieces to combine into one.");return;}
+  const pos=id=>state.objects.findIndex(o=>o.id===id),
+        sorted=os.slice().sort((a,b)=>pos(a.id)-pos(b.id));      /* back -> front */
+  let all=[];for(const o of sorted)all=all.concat(objPolylines(o));
+  const keep=new Set(os.map(x=>x.id)),idx=pos(sorted[sorted.length-1].id);
+  let at=0;for(let i=0;i<idx;i++)if(!keep.has(state.objects[i].id))at++;
+  histPush();
+  const made=objFromWorld(all,(sorted[0].name||"shape")+" combined",sorted[0].color);
+  if(!made){histDropIfSame();return;}
+  const rest=state.objects.filter(x=>!keep.has(x.id));
+  rest.splice(at,0,made);state.objects=rest;
+  renderObjList();setSel([made.id]);syncInputs();draw();
+  toast(sorted.length+" pieces are now one compound piece.");
+}
 /* a brand-new piece built straight from mat-space outlines, sitting exactly
    where the geometry already is (scale 1, no rotation, no mirror) */
 function objFromWorld(lines,name,color){const bb=bboxOf(lines);
@@ -772,6 +1130,106 @@ function offsetSel(sign){const os=selObjs();if(!os.length){alert("Select a piece
   if(!made.length){histDropIfSame();
     alert(sign<0?"That inward offset is wider than the shape itself — there'd be nothing left to cut.":"Nothing came back from that offset.");return;}
   renderObjList();setSel(made);draw();}
+/* ======================== ERASER =========================================
+   A raster eraser rubs pixels out. This one cannot - there are no pixels, and
+   a cutter needs a closed outline or it has nothing to follow. So the eraser
+   is a boolean: the path you drag is swollen into a real shape the width of
+   the tip, and that shape is SUBTRACTED from the artwork. What you get back is
+   still a proper cut file - every edge closed, every hole a real hole - just
+   with material taken out of it.
+
+   Consequences worth knowing, all of them correct behaviour:
+     - erasing across the waist of a shape splits it into two pieces, and both
+       survive as cut lines
+     - erasing the whole of a piece removes it from the job
+     - the eraser runs on the artwork's outlines, so it is resolution-free:
+       zoom in afterwards and the erased edge is still a clean curve
+
+   It reuses the boolean engine already in the app, so it adds no new library
+   and nothing new to license. */
+let eraseStroke=null;
+function eraseWidth(){const v=parseFloat(($("erWidth")||{}).value||"0.125");return (v>0&&isFinite(v))?Math.max(0.005,v):0.125;}
+function eraseSetWidth(v){const el=$("erWidth");if(!el)return;el.value=(Math.max(0.005,Math.min(12,v))).toFixed(3).replace(/0+$/,"").replace(/\.$/,"");eraseCursor();}
+/* the ring that follows the pointer, so the tip width is something you can see
+   rather than a number you have to imagine. It is a DOM circle, not canvas, so
+   moving the mouse does not force a redraw of the whole mat. */
+function eraseCursor(){
+  let el=$("eraseRing");
+  if(state.tool!=="erase"){if(el)el.style.display="none";return;}
+  if(!el){el=document.createElement("div");el.id="eraseRing";
+    el.style.cssText="position:fixed;pointer-events:none;z-index:9999;border:1.5px solid #d33;border-radius:50%;background:rgba(221,51,51,.10);display:none";
+    document.body.appendChild(el);}
+  if(eraseCursor.at){const L=layout(),ppi=L.base*view.zoom,d=Math.max(4,eraseWidth()*ppi);
+    el.style.width=d+"px";el.style.height=d+"px";
+    el.style.left=(eraseCursor.at[0]-d/2)+"px";el.style.top=(eraseCursor.at[1]-d/2)+"px";el.style.display="";}
+}
+function eraseBegin(wx,wy){eraseStroke={pts:[[wx,wy]],w:eraseWidth(),cap:(($("erCap")||{}).value||"round")};}
+function eraseMove(wx,wy,shift){
+  if(!eraseStroke)return;
+  const p=eraseStroke.pts;
+  if(shift){p.length=1;p.push([wx,wy]);draw();return;}
+  const l=p[p.length-1],min=Math.max(0.002,eraseStroke.w*0.15);
+  if(Math.hypot(wx-l[0],wy-l[1])<min)return;
+  p.push([wx,wy]);draw();
+}
+/* the dragged path swollen to the tip width, as Clipper polygons */
+function eraseSolid(st){
+  const C=ClipperLib,half=st.w/2;
+  let p=st.pts;
+  if(p.length<2)p=[p[0],[p[0][0]+1e-4,p[0][1]]];   /* a click still punches a dot */
+  const path=[];let px=null,py=null;
+  for(const q of p){const X=Math.round(q[0]*CLIP_SC),Y=Math.round(q[1]*CLIP_SC);
+    if(X===px&&Y===py)continue;path.push({X:X,Y:Y});px=X;py=Y;}
+  if(path.length<2)path.push({X:path[0].X+10,Y:path[0].Y});
+  const co=new C.ClipperOffset(2,CLIP_ARCTOL);
+  co.AddPath(path,C.JoinType.jtRound,st.cap==="square"?C.EndType.etOpenSquare:C.EndType.etOpenRound);
+  const sol=new C.Paths();co.Execute(sol,half*CLIP_SC);
+  return sol;
+}
+function eraseCommit(){
+  const st=eraseStroke;eraseStroke=null;
+  if(!st||!st.pts.length){draw();return;}
+  if(!clipReady()){draw();return;}
+  const cut=eraseSolid(st);
+  if(!cut.length){draw();return;}
+  /* how far the stroke reaches, so untouched pieces are left completely alone -
+     rebuilding an object bakes its rotation into the geometry, and there is no
+     reason to do that to a shape the eraser never came near */
+  let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;
+  for(const q of st.pts){if(q[0]<a)a=q[0];if(q[1]<b)b=q[1];if(q[0]>c)c=q[0];if(q[1]>d)d=q[1];}
+  const pad=st.w/2+1e-6;a-=pad;b-=pad;c+=pad;d+=pad;
+  const scope=(($("erScope")||{}).value||"all");
+  const only=(scope==="sel")?new Set(selObjs().map(o=>o.id)):null;
+  const C=ClipperLib,keptIds=[];let touched=0,removed=0,grew=0;
+  histPush();
+  const next=[];
+  for(const o of state.objects){
+    if(only&&!only.has(o.id)){next.push(o);keptIds.push(o.id);continue;}
+    const wl=objPolylines(o),bb=bboxOf(wl);
+    if(bb.minX>c||bb.minY>d||bb.minX+bb.w<a||bb.minY+bb.h<b){next.push(o);keptIds.push(o.id);continue;}
+    const res=clipRun(C.ClipType.ctDifference,linesToClip(normalizeWinding(wl)),cut);
+    touched++;
+    const lines=clipToLines(res);
+    if(!lines.length){removed++;continue;}                 /* erased away entirely */
+    if(lines.length>wl.length)grew++;                       /* the stroke cut it into more pieces than it started with */
+    const nu=objFromWorld(lines,o.name,o.color);
+    if(!nu){next.push(o);keptIds.push(o.id);continue;}
+    nu.id=o.id;                                            /* same piece, new outline - keeps selection and z-order */
+    next.push(nu);keptIds.push(nu.id);
+  }
+  if(!touched){undoDiscard();draw();return;}
+  state.objects=next;
+  const alive=new Set(keptIds);
+  state.selIds=(state.selIds||[]).filter(id=>alive.has(id));
+  state.selId=state.selIds.length?state.selIds[0]:null;
+  histDropIfSame();
+  renderObjList();syncInputs();draw();
+  if(removed)toast(removed===1?"That piece was erased completely and has been removed.":removed+" pieces were erased completely and have been removed.");
+  /* The cut is still ONE object, on purpose - see islandGroups(). It cuts the
+     same either way, but if you want to pick up the halves separately you have
+     to say so, and you cannot say so if nobody told you. */
+  else if(grew)toast("That is now several loose islands inside one piece. Layout ▸ Break Apart if you want to move them separately.",5200);
+}
 function objW(o){return (o.width!=null)?o.width:o.bbox.w*(o.height/(o.bbox.h||1));}
 function objSX(o){return objW(o)/(o.bbox.w||1);}function objSY(o){return o.height/(o.bbox.h||1);}
 function objWidth(o){return objW(o);}
@@ -794,6 +1252,173 @@ async function buildText(){const text=$("textInput").value;if(!text.trim()){aler
 function flattenOpentype(path){const N=16,subs=[];let cur=[],start=null,px=0,py=0;for(const c of path.commands){if(c.type==="M"){if(cur.length)subs.push(cur);cur=[[c.x,c.y]];start=[c.x,c.y];px=c.x;py=c.y;}else if(c.type==="L"){cur.push([c.x,c.y]);px=c.x;py=c.y;}else if(c.type==="C"){sampleCubic([px,py],[c.x1,c.y1],[c.x2,c.y2],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Q"){sampleQuad([px,py],[c.x1,c.y1],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Z"){if(start)cur.push([start[0],start[1]]);if(cur.length)subs.push(cur);cur=[];}}if(cur.length)subs.push(cur);return subs;}
 
 /* ---- SVG / DXF / image / studio import ---- */
+/* Flatten ABSOLUTE path data to points, in JavaScript.
+ *
+ * getPointAtLength() is the browser's own answer and it is exact, but every
+ * call is a DOM round-trip: a 223-ring design needs six figures of them and
+ * takes the best part of a minute, which reads as a hang. The curve maths is
+ * four lines, so it is done here instead and the file opens in under a second.
+ * flattenAbsD is checked against getPointAtLength in testsvgflatten.cjs — the
+ * browser stays the reference, it just stops being the engine.
+ *
+ * Input is the output of svgSubpaths(): one subpath, already absolute.
+ */
+function arcToCubics(x0,y0,rx,ry,rot,laf,sf,x,y){
+  /* Endpoint -> centre parameterisation, F.6.5 of the SVG spec, then one cubic
+     per quarter turn. Degenerate radii collapse to a straight line, as the
+     spec requires, rather than producing NaN. */
+  if(!rx||!ry)return [["L",x,y]];
+  rx=Math.abs(rx);ry=Math.abs(ry);
+  const p=rot*Math.PI/180,cp=Math.cos(p),sp=Math.sin(p),
+        dx=(x0-x)/2,dy=(y0-y)/2,
+        x1=cp*dx+sp*dy,y1=-sp*dx+cp*dy;
+  let l=(x1*x1)/(rx*rx)+(y1*y1)/(ry*ry);
+  if(l>1){const q=Math.sqrt(l);rx*=q;ry*=q;}
+  const sign=(laf===sf)?-1:1;
+  let num=rx*rx*ry*ry-rx*rx*y1*y1-ry*ry*x1*x1,den=rx*rx*y1*y1+ry*ry*x1*x1;
+  if(den===0)return [["L",x,y]];
+  const co=sign*Math.sqrt(Math.max(0,num/den)),
+        cx1=co*rx*y1/ry,cy1=-co*ry*x1/rx,
+        cx=cp*cx1-sp*cy1+(x0+x)/2,cy=sp*cx1+cp*cy1+(y0+y)/2;
+  const ang=(ux,uy,vx,vy)=>{const d=Math.sqrt((ux*ux+uy*uy)*(vx*vx+vy*vy));
+    if(!d)return 0;let c=(ux*vx+uy*vy)/d;c=Math.min(1,Math.max(-1,c));
+    return ((ux*vy-uy*vx)<0?-1:1)*Math.acos(c);};
+  let th=ang(1,0,(x1-cx1)/rx,(y1-cy1)/ry),
+      dth=ang((x1-cx1)/rx,(y1-cy1)/ry,(-x1-cx1)/rx,(-y1-cy1)/ry);
+  if(!sf&&dth>0)dth-=2*Math.PI;else if(sf&&dth<0)dth+=2*Math.PI;
+  const n=Math.max(1,Math.ceil(Math.abs(dth)/(Math.PI/2))),seg=dth/n,
+        k=4/3*Math.tan(seg/4),out=[];
+  let t0=th,px=x0,py=y0;
+  for(let i=0;i<n;i++){
+    const t1=t0+seg,
+          c0=Math.cos(t0),s0=Math.sin(t0),c1=Math.cos(t1),s1=Math.sin(t1),
+          e=(a,b)=>[cp*rx*a-sp*ry*b+cx, sp*rx*a+cp*ry*b+cy],
+          P1=e(c0-k*s0, s0+k*c0),
+          P2=e(c1+k*s1, s1-k*c1),
+          P3=e(c1,s1);
+    out.push(["C",P1[0],P1[1],P2[0],P2[1],(i===n-1?x:P3[0]),(i===n-1?y:P3[1])]);
+    px=P3[0];py=P3[1];t0=t1;
+  }
+  return out;
+}
+function flattenAbsD(d,fine){
+  const T=/([MLHVCSQTAZ])|(-?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/g;
+  const toks=[];let m;
+  while((m=T.exec(d))!==null)toks.push(m[1]!==undefined?m[1]:parseFloat(m[2]));
+  const NARG={M:2,L:2,H:1,V:1,C:6,S:4,Q:4,T:2,A:7,Z:0};
+  const pts=[];let i=0,cmd=null,cx=0,cy=0,sx=0,sy=0,pcx=null,pcy=null,pqx=null,pqy=null;
+  const add=(x,y)=>{const n=pts.length;
+    if(n&&Math.abs(pts[n-1][0]-x)<1e-9&&Math.abs(pts[n-1][1]-y)<1e-9)return;
+    pts.push([x,y]);};
+  const cubic=(x1,y1,x2,y2,x3,y3)=>{
+    const L=Math.hypot(x1-cx,y1-cy)+Math.hypot(x2-x1,y2-y1)+Math.hypot(x3-x2,y3-y2),
+          n=Math.max(2,Math.min(1600,Math.ceil(L/Math.max(fine,1e-9))));
+    for(let j=1;j<=n;j++){
+      const t=j/n,u=1-t;
+      add(u*u*u*cx+3*u*u*t*x1+3*u*t*t*x2+t*t*t*x3,
+          u*u*u*cy+3*u*u*t*y1+3*u*t*t*y2+t*t*t*y3);
+    }
+    pcx=x2;pcy=y2;pqx=null;pqy=null;cx=x3;cy=y3;};
+  while(i<toks.length){
+    if(typeof toks[i]==="string"){cmd=toks[i];i++;}
+    if(!cmd)break;
+    if(cmd==="Z"){add(sx,sy);cx=sx;cy=sy;pcx=pcy=pqx=pqy=null;continue;}
+    const n=NARG[cmd];
+    if(n===undefined)break;
+    const a=toks.slice(i,i+n);
+    if(a.length<n||a.some(v=>typeof v!=="number"))break;
+    i+=n;
+    if(cmd==="M"){cx=sx=a[0];cy=sy=a[1];add(cx,cy);pcx=pcy=pqx=pqy=null;cmd="L";}
+    else if(cmd==="L"){cx=a[0];cy=a[1];add(cx,cy);pcx=pcy=pqx=pqy=null;}
+    else if(cmd==="H"){cx=a[0];add(cx,cy);pcx=pcy=pqx=pqy=null;}
+    else if(cmd==="V"){cy=a[0];add(cx,cy);pcx=pcy=pqx=pqy=null;}
+    else if(cmd==="C")cubic(a[0],a[1],a[2],a[3],a[4],a[5]);
+    else if(cmd==="S"){
+      const rx=(pcx===null)?cx:2*cx-pcx,ry=(pcy===null)?cy:2*cy-pcy;
+      cubic(rx,ry,a[0],a[1],a[2],a[3]);}
+    else if(cmd==="Q"){
+      const qx=a[0],qy=a[1];
+      const c1x=cx+2/3*(qx-cx),c1y=cy+2/3*(qy-cy),
+            c2x=a[2]+2/3*(qx-a[2]),c2y=a[3]+2/3*(qy-a[3]);
+      cubic(c1x,c1y,c2x,c2y,a[2],a[3]);pqx=qx;pqy=qy;pcx=pcy=null;}
+    else if(cmd==="T"){
+      const qx=(pqx===null)?cx:2*cx-pqx,qy=(pqy===null)?cy:2*cy-pqy,
+            c1x=cx+2/3*(qx-cx),c1y=cy+2/3*(qy-cy),
+            c2x=a[0]+2/3*(qx-a[0]),c2y=a[1]+2/3*(qy-a[1]);
+      cubic(c1x,c1y,c2x,c2y,a[0],a[1]);pqx=qx;pqy=qy;pcx=pcy=null;}
+    else if(cmd==="A"){
+      for(const c of arcToCubics(cx,cy,a[0],a[1],a[2],a[3],a[4],a[5],a[6])){
+        if(c[0]==="L"){cx=c[1];cy=c[2];add(cx,cy);}
+        else cubic(c[1],c[2],c[3],c[4],c[5],c[6]);}
+      pcx=pcy=pqx=pqy=null;}
+  }
+  return pts;
+}
+/* Split a path "d" into one absolute-coordinate d per SUBPATH.
+ *
+ * Splitting on the letter M alone is wrong: a subpath that starts with a
+ * lowercase m is positioned RELATIVE to where the previous one ended, so a
+ * naive text split stacks every ring on top of the first. Everything is
+ * therefore converted to absolute as it is walked. S/T keep their letters —
+ * they reflect the previous control point, which never crosses a subpath
+ * boundary in valid path data — and only their coordinates are absolutised.
+ * Returns [d] unchanged if the data cannot be parsed, so a strange file
+ * degrades to the old single-path behaviour rather than importing nothing. */
+function svgSubpaths(d){
+  if(!d||!/[Mm]/.test(d))return [d];
+  const T=/([MmLlHhVvCcSsQqTtAaZz])|(-?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/g;
+  const toks=[];let m;
+  while((m=T.exec(d))!==null)toks.push(m[1]!==undefined?m[1]:parseFloat(m[2]));
+  const NARG={M:2,L:2,H:1,V:1,C:6,S:4,Q:4,T:2,A:7,Z:0};
+  const f=v=>{const r=Math.round(v*1e6)/1e6;return String(r);};
+  let i=0,cmd=null,cx=0,cy=0,sx=0,sy=0;
+  const out=[];let cur=null;
+  const push=str=>{if(cur)cur.push(str);};
+  try{
+    while(i<toks.length){
+      if(typeof toks[i]==="string"){cmd=toks[i];i++;}
+      if(!cmd)return [d];
+      const up=cmd.toUpperCase(),rel=(cmd!==up);
+      if(up==="Z"){push("Z");cx=sx;cy=sy;continue;}
+      const n=NARG[up];
+      if(n===undefined)return [d];
+      const a=toks.slice(i,i+n);
+      if(a.length<n||a.some(v=>typeof v!=="number"))break;
+      i+=n;
+      if(up==="M"){
+        const x=rel?cx+a[0]:a[0],y=rel?cy+a[1]:a[1];
+        if(cur&&cur.length)out.push(cur.join(""));
+        cur=["M"+f(x)+","+f(y)];
+        cx=sx=x;cy=sy=y;
+      }else if(up==="L"){
+        const x=rel?cx+a[0]:a[0],y=rel?cy+a[1]:a[1];
+        push("L"+f(x)+","+f(y));cx=x;cy=y;
+      }else if(up==="H"){
+        const x=rel?cx+a[0]:a[0];
+        push("L"+f(x)+","+f(cy));cx=x;
+      }else if(up==="V"){
+        const y=rel?cy+a[0]:a[0];
+        push("L"+f(cx)+","+f(y));cy=y;
+      }else if(up==="C"){
+        const v=[rel?cx+a[0]:a[0],rel?cy+a[1]:a[1],rel?cx+a[2]:a[2],rel?cy+a[3]:a[3],rel?cx+a[4]:a[4],rel?cy+a[5]:a[5]];
+        push("C"+v.map(f).join(","));cx=v[4];cy=v[5];
+      }else if(up==="S"||up==="Q"){
+        const v=[rel?cx+a[0]:a[0],rel?cy+a[1]:a[1],rel?cx+a[2]:a[2],rel?cy+a[3]:a[3]];
+        push(up+v.map(f).join(","));cx=v[2];cy=v[3];
+      }else if(up==="T"){
+        const x=rel?cx+a[0]:a[0],y=rel?cy+a[1]:a[1];
+        push("T"+f(x)+","+f(y));cx=x;cy=y;
+      }else if(up==="A"){
+        const x=rel?cx+a[5]:a[5],y=rel?cy+a[6]:a[6];
+        push("A"+[f(a[0]),f(a[1]),f(a[2]),String(a[3]),String(a[4]),f(x),f(y)].join(","));
+        cx=x;cy=y;
+      }
+      if(cmd==="M")cmd="L";else if(cmd==="m")cmd="l";
+    }
+  }catch(e){return [d];}
+  if(cur&&cur.length)out.push(cur.join(""));
+  return out.length?out:[d];
+}
 function importSVG(file){const r=new FileReader();r.onload=()=>{try{
   const doc=new DOMParser().parseFromString(r.result,"image/svg+xml"),svg=doc.documentElement,
         holder=document.createElement("div");
@@ -825,26 +1450,658 @@ function importSVG(file){const r=new FileReader();r.onload=()=>{try{
      physical: about four thousandths of an inch between samples, at
      least 24 samples on even the smallest speck so a mud drop survives, and a
      ceiling so one enormous path cannot bury the editor. */
-  const FINE=uupi*0.004,MINPTS=24,MAXPTS=1600,subs=[];
+  const FINE=uupi*0.004,MINPTS=24,MAXPTS=1600,subs=[],SVGNS="http://www.w3.org/2000/svg";
+  /* ONE <path> can hold many independent rings — every letter with a counter,
+     every hole, and in a traced design the whole drawing. Sampling such an
+     element with getPointAtLength() walks straight across the gaps between
+     those rings, so the sampled chain contains segments that were never drawn:
+     the blade would join ring to ring with a straight cut through the artwork.
+     The same element also shares ONE point budget, so a 223-ring design came
+     out at seven points a ring.
+       Both problems are the same problem, and splitting the d into one temp
+     <path> per subpath fixes both. The temps are inserted as SIBLINGS of the
+     original so they inherit the identical CTM, and removed straight after. */
+  const targets=[];
   svg.querySelectorAll("path,line,polyline,polygon,rect,circle,ellipse").forEach(el=>{
-    let t=0;try{t=el.getTotalLength();}catch(e){return;}
-    if(!t||!isFinite(t)||t<=0)return;
-    const nseg=Math.max(MINPTS,Math.min(MAXPTS,Math.ceil(t/Math.max(FINE,1e-9)))),
-          ctm=el.getCTM(),pts=[];
-    for(let i=0;i<=nseg;i++){
-      let p=el.getPointAtLength(t*i/nseg);
-      if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;
-      pts.push([p.x,p.y]);
+    if(el.tagName.toLowerCase()==="path"&&el.parentNode){
+      let parts=[];
+      try{parts=svgSubpaths(el.getAttribute("d")||"");}catch(e){parts=[];}
+      if(parts.length){
+        /* Flatten in JS and push the points through this element's own CTM.
+           Falls back to a temp DOM path for anything flattenAbsD cannot read,
+           so an odd file loses speed rather than geometry. */
+        const ctm=el.getCTM();
+        let allOK=true;
+        const staged=[];
+        for(const pd of parts){
+          let q=[];
+          try{q=flattenAbsD(pd,FINE);}catch(e){q=[];}
+          if(q.length<2){allOK=false;break;}
+          staged.push(q);
+        }
+        if(allOK){
+          for(const q of staged){
+            const out=ctm?q.map(([x,y])=>[ctm.a*x+ctm.c*y+ctm.e, ctm.b*x+ctm.d*y+ctm.f]):q;
+            if(out.length>1)subs.push(out);
+          }
+          return;
+        }
+        for(const pd of parts){
+          const t=document.createElementNS(SVGNS,"path");
+          t.setAttribute("d",pd);
+          el.parentNode.insertBefore(t,el);
+          targets.push({el:t,tmp:true});
+        }
+        return;
+      }
     }
-    if(pts.length>1)subs.push(pts);
+    targets.push({el:el,tmp:false});
   });
+  for(const tg of targets){
+    const el=tg.el;
+    let t=0;try{t=el.getTotalLength();}catch(e){t=0;}
+    if(t&&isFinite(t)&&t>0){
+      const nseg=Math.max(MINPTS,Math.min(MAXPTS,Math.ceil(t/Math.max(FINE,1e-9)))),
+            ctm=el.getCTM(),pts=[];
+      for(let i=0;i<=nseg;i++){
+        let p=el.getPointAtLength(t*i/nseg);
+        if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;
+        pts.push([p.x,p.y]);
+      }
+      if(pts.length>1)subs.push(pts);
+    }
+    if(tg.tmp&&el.parentNode)el.parentNode.removeChild(el);
+  }
   document.body.removeChild(holder);
   if(!subs.length){alert("No cuttable paths found in that SVG.");return;}
   const scaled=subs.map(sp=>sp.map(([x,y])=>[x/upi,y/upi])),bb=bboxOf(scaled);
   addObject(scaled,file.name,bb.h);
 }catch(e){alert("SVG import failed: "+(e.message||e));}};r.readAsText(file);}
-function parseDXF(text){const rows=text.split(/\r\n|\r|\n/),pairs=[];for(let i=0;i+1<rows.length;i+=2)pairs.push([parseInt(rows[i].trim(),10),rows[i+1].trim()]);const ents=[];let cur=null;for(const [code,val] of pairs){if(isNaN(code))continue;if(code===0){if(cur)ents.push(cur);cur={type:val,c:{}};}else if(cur){(cur.c[code]=cur.c[code]||[]).push(val);}}if(cur)ents.push(cur);const n=v=>parseFloat(v),subs=[];let poly=null;for(const e of ents){const c=e.c;if(e.type==="LINE"&&c[10]&&c[11])subs.push([[n(c[10][0]),-n(c[20][0])],[n(c[11][0]),-n(c[21][0])]]);else if(e.type==="LWPOLYLINE"&&c[10]){const xs=c[10],ys=c[20]||[],p=[];for(let i=0;i<xs.length;i++)p.push([n(xs[i]),-n(ys[i]||0)]);if(c[70]&&(parseInt(c[70][0],10)&1)&&p.length)p.push(p[0].slice());if(p.length>1)subs.push(p);}else if(e.type==="CIRCLE"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]),p=[];for(let i=0;i<=64;i++){const a=i/64*2*Math.PI;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="ARC"&&c[10]){const cx=n(c[10][0]),cy=n(c[20][0]),rr=n(c[40][0]);let a0=n(c[50][0]),a1=n(c[51][0]);if(a1<a0)a1+=360;const st=Math.max(8,Math.round((a1-a0)/5)),p=[];for(let i=0;i<=st;i++){const a=(a0+(a1-a0)*i/st)*Math.PI/180;p.push([cx+rr*Math.cos(a),-(cy+rr*Math.sin(a))]);}subs.push(p);}else if(e.type==="POLYLINE")poly=[];else if(e.type==="VERTEX"&&poly&&c[10])poly.push([n(c[10][0]),-n(c[20][0])]);else if(e.type==="SEQEND"){if(poly&&poly.length>1)subs.push(poly);poly=null;}}return subs;}
-function importDXF(file){const r=new FileReader();r.onload=()=>{try{const subs=parseDXF(r.result);if(!subs.length){alert("No cuttable entities found in that DXF.");return;}const bb=bboxOf(subs);addObject(subs,file.name,bb.h);}catch(e){alert("DXF import failed: "+(e.message||e));}};r.readAsText(file);}
+/* A one-line, self-dismissing note. An import decision that changes the SIZE of
+   a design has to be visible, but it must not stop the work the way alert()
+   does — so it is a banner, not a dialog. */
+function toast(msg,ms){
+  let box=document.getElementById("toastBox");
+  if(!box){box=document.createElement("div");box.id="toastBox";
+    box.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:54px;z-index:9999;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none";
+    document.body.appendChild(box);}
+  const t=document.createElement("div");t.textContent=msg;
+  t.style.cssText="background:#1d2430;color:#e8eef7;border:1px solid #3a4657;border-radius:7px;padding:8px 14px;font-size:12px;line-height:1.35;box-shadow:0 6px 20px rgba(0,0,0,.45);max-width:70vw;text-align:center";
+  box.appendChild(t);setTimeout(()=>{t.remove();},ms||6500);}
+/* What the last DXF said its units were, so the import can say so out loud
+   instead of leaving the shop to discover it on the vinyl. */
+let LAST_DXF_UNITS="";
+/* Geometry out of one entity list, in the file's own units and with y still
+   pointing UP the way DXF writes it. Split out of parseDXF because a block can
+   INSERT another block, so this has to be able to call itself. Depth is capped
+   so a file whose blocks reference each other in a circle cannot hang the app
+   instead of failing. */
+/* A DXF SPLINE, evaluated properly.
+ *
+ * A spline in a DXF is a NURBS curve: a degree, a knot vector, a list of
+ * control points, and optionally a weight per control point. The control
+ * points are NOT on the curve - joining them with straight lines, which is
+ * what a lazy importer does, gives a shape that bulges outside the real one
+ * by a visible amount. On a fillet or a swept letterform that is the
+ * difference between a part that fits and one that does not, so this does the
+ * real thing: rational de Boor recursion at every sample.
+ *
+ * Some programs (older AutoCAD, a few converters) write a spline with FIT
+ * points and no control points at all - the curve is then defined by the
+ * points it passes through. There is nothing to evaluate in that case, and
+ * the fit points ARE on the curve, so joining them is correct rather than
+ * approximate. That is the fallback, not the main path.
+ *
+ * Sample count is not fixed. It doubles until the worst chord sagitta is
+ * under the artwork's own diagonal over 8000 - about two thousandths of an
+ * inch on a 16 in design, finer than the blade - so a gentle curve costs a
+ * handful of points and a tight one gets as many as it needs. */
+function dxfDeBoor(deg,knots,ctrl,wts,t){
+  const n=ctrl.length;
+  /* the span t lives in; clamp so t exactly at the end still finds a span */
+  let k=deg;
+  while(k<n-1&&knots[k+1]<=t)k++;
+  /* work in homogeneous coordinates so the weights come out right */
+  const dx=[],dy=[],dw=[];
+  for(let j=0;j<=deg;j++){
+    const i=k-deg+j,w=wts[i]!==undefined?wts[i]:1;
+    dx[j]=ctrl[i][0]*w;dy[j]=ctrl[i][1]*w;dw[j]=w;
+  }
+  for(let r=1;r<=deg;r++){
+    for(let j=deg;j>=r;j--){
+      const i=k-deg+j,lo=knots[i],hi=knots[i+deg-r+1],den=hi-lo;
+      const a=den>1e-12?(t-lo)/den:0;
+      dx[j]=(1-a)*dx[j-1]+a*dx[j];
+      dy[j]=(1-a)*dy[j-1]+a*dy[j];
+      dw[j]=(1-a)*dw[j-1]+a*dw[j];
+    }
+  }
+  const w=dw[deg];
+  return Math.abs(w)>1e-12?[dx[deg]/w,dy[deg]/w]:[dx[deg],dy[deg]];
+}
+function dxfSpline(e,num){
+  const c=e.c;
+  const flags=c[70]?parseInt(c[70][0],10):0,closed=!!(flags&1);
+  const xs=c[10]||[],ys=c[20]||[];
+  const ctrl=[];for(let i=0;i<xs.length;i++)ctrl.push([num(xs[i]),num(ys[i]||0)]);
+  /* fit points: the curve passes through these, so if that is all we have,
+     they are the answer and not an approximation of it */
+  if(ctrl.length<2){
+    const fx=c[11]||[],fy=c[21]||[],fit=[];
+    for(let i=0;i<fx.length;i++)fit.push([num(fx[i]),num(fy[i]||0)]);
+    if(fit.length>1&&closed)fit.push(fit[0].slice());
+    return fit.length>1?fit:null;
+  }
+  let deg=c[71]?parseInt(c[71][0],10):3;
+  if(!(deg>=1))deg=3;
+  if(deg>ctrl.length-1)deg=ctrl.length-1;              /* too few points for the stated degree */
+  let knots=(c[40]||[]).map(num);
+  const wts=(c[41]||[]).map(num);
+  const need=ctrl.length+deg+1;
+  if(knots.length!==need){
+    /* a malformed or missing knot vector - rebuild a clamped uniform one
+       rather than refusing the file, which is what the shop actually wants */
+    knots=[];
+    const inner=ctrl.length-deg;
+    for(let i=0;i<=deg;i++)knots.push(0);
+    for(let i=1;i<inner;i++)knots.push(i/inner);
+    for(let i=0;i<=deg;i++)knots.push(1);
+  }
+  const t0=knots[deg],t1=knots[ctrl.length];
+  if(!(t1>t0))return null;
+  /* how fine is fine enough, in the file's own units */
+  let a=Infinity,b=Infinity,cc=-Infinity,d=-Infinity;
+  for(const p of ctrl){if(p[0]<a)a=p[0];if(p[1]<b)b=p[1];if(p[0]>cc)cc=p[0];if(p[1]>d)d=p[1];}
+  const diag=Math.hypot(cc-a,d-b),tol=(diag>0?diag:1)/8000;
+  let N=Math.max(32,deg*16),pts=null;
+  for(let pass=0;pass<7;pass++){
+    pts=[];
+    for(let i=0;i<=N;i++){
+      let t=t0+(t1-t0)*i/N;
+      if(i===N)t=t1-1e-12;                              /* stay inside the last span */
+      pts.push(dxfDeBoor(deg,knots,ctrl,wts,t));
+    }
+    /* worst midpoint deviation between consecutive samples: if halving the
+       step barely moves the midpoint, the chords are already true */
+    let worst=0;
+    for(let i=0;i<N;i++){
+      const t=t0+(t1-t0)*(i+0.5)/N,m=dxfDeBoor(deg,knots,ctrl,wts,Math.min(t,t1-1e-12));
+      const A=pts[i],B=pts[i+1];
+      worst=Math.max(worst,Math.hypot(m[0]-(A[0]+B[0])/2,m[1]-(A[1]+B[1])/2));
+    }
+    if(worst<=tol||N>=8192)break;
+    N*=2;
+  }
+  if(closed&&pts.length>1){
+    const A=pts[0],B=pts[pts.length-1];
+    if(Math.hypot(B[0]-A[0],B[1]-A[1])>1e-9)pts.push(A.slice());
+    else pts[pts.length-1]=A.slice();
+  }
+  return pts;
+}
+function dxfSubs(list,blocks,depth){
+  const subs=[],num=v=>parseFloat(v)||0;let poly=null;
+  for(const e of list){const c=e.c;
+    if(e.type==="LINE"&&c[10]&&c[11])subs.push([[num(c[10][0]),num((c[20]||[0])[0])],[num(c[11][0]),num((c[21]||[0])[0])]]);
+    else if(e.type==="LWPOLYLINE"&&c[10]){const xs=c[10],ys=c[20]||[],p=[];for(let i=0;i<xs.length;i++)p.push([num(xs[i]),num(ys[i]||0)]);if(c[70]&&(parseInt(c[70][0],10)&1)&&p.length)p.push(p[0].slice());if(p.length>1)subs.push(p);}
+    else if(e.type==="CIRCLE"&&c[10]){const cx=num(c[10][0]),cy=num((c[20]||[0])[0]),rr=num((c[40]||[0])[0]),p=[];for(let i=0;i<=64;i++){const a=i/64*2*Math.PI;p.push([cx+rr*Math.cos(a),cy+rr*Math.sin(a)]);}subs.push(p);}
+    else if(e.type==="ARC"&&c[10]){const cx=num(c[10][0]),cy=num((c[20]||[0])[0]),rr=num((c[40]||[0])[0]);let a0=num((c[50]||[0])[0]),a1=num((c[51]||[0])[0]);if(a1<a0)a1+=360;const st=Math.max(8,Math.round((a1-a0)/5)),p=[];for(let i=0;i<=st;i++){const a=(a0+(a1-a0)*i/st)*Math.PI/180;p.push([cx+rr*Math.cos(a),cy+rr*Math.sin(a)]);}subs.push(p);}
+    /* SPLINE and ELLIPSE. Every CAD program writes these - a fillet, a swept
+       curve, anything drawn with the spline tool, any oval - and until now the
+       importer walked straight past them. A DXF containing nothing else came
+       back "No cuttable entities found", which reads like a broken file rather
+       than a missing feature, and a DXF containing a mix quietly lost the
+       curved parts and imported the rest. Both are now evaluated properly:
+       the spline through real de Boor recursion over its own knot vector and
+       weights, not an eyeballed polyline through the control points, which is
+       a different shape and would have cut wrong. */
+    else if(e.type==="SPLINE"){const p=dxfSpline(e,num);if(p&&p.length>1)subs.push(p);}
+    else if(e.type==="ELLIPSE"&&c[10]){
+      const cx=num(c[10][0]),cy=num((c[20]||[0])[0]),
+            mx=num((c[11]||[0])[0]),my=num((c[21]||[0])[0]),
+            ratio=c[40]?num(c[40][0]):1;
+      let t0=c[41]?num(c[41][0]):0,t1=c[42]?num(c[42][0]):2*Math.PI;
+      if(!(t1>t0))t1+=2*Math.PI;
+      /* the minor axis is the major turned a quarter turn and scaled - so this
+         is exact for a rotated ellipse, which is the whole reason DXF stores
+         the major axis as a vector rather than as a length plus an angle */
+      const px=-my*ratio,py=mx*ratio,
+            span=t1-t0,st=Math.max(32,Math.min(2048,Math.round(span/(2*Math.PI)*512))),pts=[];
+      for(let i=0;i<=st;i++){const t=t0+span*i/st;
+        pts.push([cx+mx*Math.cos(t)+px*Math.sin(t),cy+my*Math.cos(t)+py*Math.sin(t)]);}
+      if(Math.abs(span-2*Math.PI)<1e-9)pts[pts.length-1]=pts[0].slice();
+      subs.push(pts);
+    }
+    else if(e.type==="POLYLINE")poly=[];
+    else if(e.type==="VERTEX"&&poly&&c[10])poly.push([num(c[10][0]),num((c[20]||[0])[0])]);
+    else if(e.type==="SEQEND"){if(poly&&poly.length>1)subs.push(poly);poly=null;}
+    else if(e.type==="INSERT"&&depth<8){
+      /* An INSERT is the only thing that turns a block DEFINITION into drawn
+         artwork: it carries the position, the scale, the rotation and, for a
+         grid stamp, the row and column counts. Reading the definition without
+         reading the INSERT draws the block once, at the wrong place, at the
+         wrong size, however many times it was actually placed. */
+      const b=blocks[(c[2]||[""])[0]];if(!b)continue;
+      const ox=num((c[10]||[0])[0]),oy=num((c[20]||[0])[0]),
+            sx=c[41]?num(c[41][0]):1,sy=c[42]?num(c[42][0]):1,
+            rot=(c[50]?num(c[50][0]):0)*Math.PI/180,ca=Math.cos(rot),sa=Math.sin(rot),
+            nc=Math.max(1,c[70]?(parseInt(c[70][0],10)||1):1),
+            nr=Math.max(1,c[71]?(parseInt(c[71][0],10)||1):1),
+            dc=c[44]?num(c[44][0]):0,dr=c[45]?num(c[45][0]):0,
+            inner=dxfSubs(b.ents,blocks,depth+1);
+      for(let ci=0;ci<nc;ci++)for(let ri=0;ri<nr;ri++)for(const p of inner)
+        subs.push(p.map(q=>{const u=(q[0]-b.bx)*sx,v=(q[1]-b.by)*sy;
+          return [ox+ci*dc+u*ca-v*sa,oy+ri*dr+u*sa+v*ca];}));
+    }
+  }
+  return subs;
+}
+function parseDXF(text){const rows=text.split(/\r\n|\r|\n/),pairs=[];for(let i=0;i+1<rows.length;i+=2)pairs.push([parseInt(rows[i].trim(),10),rows[i+1].trim()]);const ents=[];let cur=null;for(const [code,val] of pairs){if(isNaN(code))continue;if(code===0){if(cur)ents.push(cur);cur={type:val,c:{}};}else if(cur){(cur.c[code]=cur.c[code]||[]).push(val);}}if(cur)ents.push(cur);
+  /* A DXF is made of SECTIONS, and only ENTITIES is the drawing.
+     Walking every 0-record in the file regardless of where it sits looks like
+     it works - every ring of our own exports came in - and then quietly adds
+     geometry nobody drew. ezdxf, like most CAD writers, ships a BLOCKS section
+     holding arrowhead definitions (_ARCHTICK, _CLOSEDBLANK). Those are
+     TEMPLATES, not placements. Scooping them up put two stray polylines into
+     all six JZAC logo files and grew the imported artwork by 1.0 x 0.5 mm -
+     enough to throw off a size-to-fit, and to leave two specks on the mat for
+     the shop to find and weed out of a job that should have had none.
+       Blocks still matter, because plenty of drawings keep their real artwork
+     in a block and place it with INSERT. So definitions are INDEXED here and
+     drawn only where an INSERT calls for them, with that INSERT's own offset,
+     scale and rotation. Paper-space entities (67=1) are layout furniture, not
+     artwork, and go for the same reason. */
+  const blocks={},body=[];let sec="",blk=null;
+  for(const e of ents){
+    if(e.type==="SECTION"){sec=(e.c[2]||[""])[0];continue;}
+    if(e.type==="ENDSEC"){sec="";blk=null;continue;}
+    if(e.type==="BLOCK"){blk={name:(e.c[2]||[""])[0],bx:parseFloat((e.c[10]||[0])[0])||0,by:parseFloat((e.c[20]||[0])[0])||0,ents:[]};blocks[blk.name]=blk;continue;}
+    if(e.type==="ENDBLK"){blk=null;continue;}
+    if(blk){blk.ents.push(e);continue;}
+    if(sec==="ENTITIES"&&!(e.c[67]&&parseInt(e.c[67][0],10)===1))body.push(e);
+  }
+  /* A hand-written, truncated or salvaged DXF may carry no SECTION records at
+     all. If the strict read finds nothing, take everything outside a block
+     rather than telling the shop the file is empty when it plainly is not. */
+  let scope=body;
+  if(!scope.length){scope=[];let inb=false;for(const e of ents){if(e.type==="BLOCK"){inb=true;continue;}if(e.type==="ENDBLK"){inb=false;continue;}if(!inb)scope.push(e);}}
+  const raw=dxfSubs(scope,blocks,0);
+  /* A DXF carries no implied unit. The numbers in the file are just numbers,
+     and $INSUNITS in the HEADER is what says whether they are millimetres or
+     inches. Reading them as inches regardless is a 25.4x error: a 24" design
+     authored in mm (which is what Silhouette, Illustrator, Corel and every
+     cutter driver write) arrived as a 609" monster and then got silently
+     shrunk to a 4" scrap by the size guard. The header is scanned here rather
+     than trusted to the entity walker, because 9/$NAME pairs sit outside the
+     entity records.
+        1=in 2=ft 3=mi 4=mm 5=cm 6=m 8=uin 9=mil 10=yd 13=um 14=dm 15=dam
+     $INSUNITS 0 means "unitless", and then $MEASUREMENT (0 imperial, 1 metric)
+     is the next best answer. If a file states neither, the drawing's own size
+     decides: nothing anyone cuts is 240 inches on a side, so a number that
+     large is millimetres. */
+  const U2IN={1:1,2:12,3:63360,4:1/25.4,5:10/25.4,6:1000/25.4,8:1e-6,9:1e-3,10:36,12:1e-6/25.4,13:1e-3/25.4,14:100/25.4,15:10000/25.4};
+  let hu=null,hm=null;
+  for(let i=0;i+1<pairs.length;i++){
+    if(pairs[i][0]!==9)continue;
+    const nm=pairs[i][1],nx=pairs[i+1];
+    if(nm==="$INSUNITS"&&nx&&nx[0]===70)hu=parseInt(nx[1],10);
+    else if(nm==="$MEASUREMENT"&&nx&&nx[0]===70)hm=parseInt(nx[1],10);
+  }
+  let k=null,unitSrc="";
+  if(hu&&U2IN[hu]){k=U2IN[hu];unitSrc="$INSUNITS="+hu;}
+  else if(hm===1){k=1/25.4;unitSrc="$MEASUREMENT=1 (metric)";}
+  else if(hm===0){k=1;unitSrc="$MEASUREMENT=0 (imperial)";}
+  if(k===null){
+    /* The guess now measures the geometry that will actually be cut, not every
+       10/20 code in the file. Block base points and header coordinates were in
+       that old sweep and could push the span past 240 on their own. */
+    let mx=0;
+    for(const p of raw)for(const q of p){const ax=Math.abs(q[0]),ay=Math.abs(q[1]);if(ax>mx)mx=ax;if(ay>mx)mx=ay;}
+    k=mx>240?1/25.4:1;unitSrc="no unit in file, guessed "+(k===1?"inches":"millimetres")+" from a span of "+mx.toFixed(1);
+  }
+  LAST_DXF_UNITS=unitSrc;
+  /* y down, to match the screen and every other importer in this app. */
+  return raw.map(p=>p.map(q=>[q[0]*k,-q[1]*k]));}
+function importDXF(file){const r=new FileReader();r.onload=()=>{try{const subs=parseDXF(r.result);if(!subs.length){alert("No cuttable entities found in that DXF.");return;}const bb=bboxOf(subs);addObject(subs,file.name,bb.h);
+  /* Say the unit out loud. A wrong DXF unit is the one import error that costs
+     material rather than time, and it is invisible until the blade moves. */
+  toast("DXF units: "+LAST_DXF_UNITS+"  \u2192  "+bb.w.toFixed(2)+" \u00d7 "+bb.h.toFixed(2)+" in");
+  }catch(e){alert("DXF import failed: "+(e.message||e));}};r.readAsText(file);}
+
+/* ====================================================================
+   PDF and EPS import.
+   --------------------------------------------------------------------
+   Every job that leaves this shop goes out as SVG, DXF, PDF and EPS, and
+   until now the app could read back two of the four formats it writes.
+   A customer sends a PDF proof back with a note, a sign shop sends an EPS,
+   a designer sends the AI file saved as PDF - and the answer was "export it
+   to SVG first", which means opening a second program to read our own file.
+
+   Both formats draw with the SAME path operators, because EPS is PostScript
+   and a PDF content stream is a cut-down PostScript. The only real difference
+   is spelling: PDF (and Illustrator's EPS prolog) uses the one-letter
+   shorthand m l c v y h re, while a plain PostScript writer - including ours -
+   uses the full names moveto lineto curveto closepath. So there is ONE
+   interpreter here and it answers to both, which is also the only way our own
+   EPS files import at all.
+
+   What comes in is the ARTWORK, not the page. Clip paths, crop marks and
+   anything drawn and then discarded without being painted are dropped, the
+   same way a cutter would ignore them.
+
+   Live text cannot be cut. A PDF with real type in it carries the font, not
+   the outlines, and there is nothing here to follow with a blade. That gets
+   an honest message rather than a silently empty import. */
+
+/* [a b c d e f]: x' = ax + cy + e,  y' = bx + dy + f */
+function mApp(m,x,y){return [m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]];}
+function mMul(m,n){return [m[0]*n[0]+m[1]*n[2],m[0]*n[1]+m[1]*n[3],
+                           m[2]*n[0]+m[3]*n[2],m[2]*n[1]+m[3]*n[3],
+                           m[4]*n[0]+m[5]*n[2]+n[4],m[4]*n[1]+m[5]*n[3]+n[5]];}
+/* Split a content stream into tokens. Strings, hex strings, comments and
+   PROCEDURE BODIES are skipped - the last one matters more than it looks,
+   because an Illustrator EPS prolog defines its shorthand as /m {moveto} def
+   and an interpreter that reads inside the braces draws the definitions. */
+function psTokens(s){
+  const out=[],n=s.length,DELIM=/[\s()<>\[\]{}\/%\0]/;let i=0,brace=0;
+  while(i<n){
+    const ch=s[i];
+    if(ch==='%'){while(i<n&&s[i]!=='\n'&&s[i]!=='\r')i++;continue;}
+    if(ch===' '||ch==='\n'||ch==='\r'||ch==='\t'||ch==='\f'||ch==='\0'||ch==='\b'){i++;continue;}
+    if(ch==='('){let d=1;i++;while(i<n&&d){if(s[i]==='\\'){i+=2;continue;}if(s[i]==='(')d++;else if(s[i]===')')d--;i++;}if(!brace)out.push("(str)");continue;}
+    if(ch==='{'){brace++;i++;continue;}
+    if(ch==='}'){if(brace)brace--;i++;continue;}
+    if(ch==='<'){if(s[i+1]==='<'){if(!brace)out.push("<<");i+=2;continue;}
+      const j=s.indexOf('>',i);i=(j<0?n:j+1);if(!brace)out.push("(str)");continue;}
+    if(ch==='>'){if(s[i+1]==='>'){if(!brace)out.push(">>");i+=2;continue;}i++;continue;}
+    if(ch==='['||ch===']'){if(!brace)out.push(ch);i++;continue;}
+    if(ch==='/'){let j=i+1;while(j<n&&!DELIM.test(s[j]))j++;if(!brace)out.push('/'+s.slice(i+1,j));i=j;continue;}
+    let j=i;while(j<n&&!DELIM.test(s[j]))j++;
+    if(j===i)j++;
+    if(!brace)out.push(s.slice(i,j));
+    i=j;
+  }
+  return out;
+}
+/* The interpreter. ctx carries the output array, the graphics-state stack and
+   a resolver for form XObjects so a PDF that wraps its art in a form - which
+   is what Illustrator writes - still gives up its geometry. */
+function psRun(tokens,ctx){
+  let ctm=ctx.ctm.slice();
+  const gs=[],st=[];
+  let path=[],cur=null,start=null,pendClip=false,inImage=false;
+  const TOL=ctx.tol;
+  const nums=k=>{const a=st.slice(-k);st.length=Math.max(0,st.length-k);
+    while(a.length<k)a.unshift(0);return a.map(v=>{const f=parseFloat(v);return isFinite(f)?f:0;});};
+  const P=(x,y)=>mApp(ctm,x,y);
+  const flush=paint=>{
+    if(paint&&!pendClip)for(const L of path)if(L.length>1)ctx.out.push(L);
+    path=[];cur=null;start=null;pendClip=false;};
+  const moveTo=(x,y)=>{const p=P(x,y);path.push([p]);cur=[x,y];start=[x,y];};
+  const lineTo=(x,y)=>{if(!path.length)moveTo(x,y);else{path[path.length-1].push(P(x,y));cur=[x,y];}};
+  const curveTo=(x1,y1,x2,y2,x3,y3)=>{
+    if(!path.length)moveTo(x1,y1);
+    const L=path[path.length-1],a=L[L.length-1];
+    /* an affine map takes a Bezier's control points to the transformed
+       Bezier's control points exactly, so flattening after the transform is
+       not an approximation of an approximation - it is the same curve */
+    flatCubic(L,a,P(x1,y1),P(x2,y2),P(x3,y3),TOL,0);
+    cur=[x3,y3];};
+  const close=()=>{if(path.length&&start){const L=path[path.length-1],a=L[0];
+    const b=L[L.length-1];if(Math.hypot(b[0]-a[0],b[1]-a[1])>1e-9)L.push(a.slice());cur=start.slice();}};
+  for(let i=0;i<tokens.length;i++){
+    const t=tokens[i];
+    if(inImage){if(t==="EI")inImage=false;continue;}
+    if(/^[-+]?(\d|\.\d)/.test(t)){st.push(t);continue;}
+    if(t[0]==='/'||t==='['||t===']'||t==='<<'||t===">>"||t==="(str)"){st.push(t);continue;}
+    switch(t){
+      case "m": case "moveto": {const a=nums(2);moveTo(a[0],a[1]);break;}
+      case "rmoveto": {const a=nums(2);const c0=cur||[0,0];moveTo(c0[0]+a[0],c0[1]+a[1]);break;}
+      case "l": case "L": case "lineto": {const a=nums(2);lineTo(a[0],a[1]);break;}
+      case "rlineto": {const a=nums(2);const c0=cur||[0,0];lineTo(c0[0]+a[0],c0[1]+a[1]);break;}
+      case "c": case "C": case "curveto": {const a=nums(6);curveTo(a[0],a[1],a[2],a[3],a[4],a[5]);break;}
+      case "rcurveto": {const a=nums(6);const c0=cur||[0,0];
+        curveTo(c0[0]+a[0],c0[1]+a[1],c0[0]+a[2],c0[1]+a[3],c0[0]+a[4],c0[1]+a[5]);break;}
+      case "v": case "V": {const a=nums(4);const c0=cur||[a[0],a[1]];curveTo(c0[0],c0[1],a[0],a[1],a[2],a[3]);break;}
+      case "y": case "Y": {const a=nums(4);curveTo(a[0],a[1],a[2],a[3],a[2],a[3]);break;}
+      case "h": case "H": case "closepath": close();break;
+      case "re": {const a=nums(4);moveTo(a[0],a[1]);lineTo(a[0]+a[2],a[1]);
+        lineTo(a[0]+a[2],a[1]+a[3]);lineTo(a[0],a[1]+a[3]);close();break;}
+      case "W": case "W*": case "clip": case "eoclip": pendClip=true;st.length=0;break;
+      case "n": case "newpath": flush(false);st.length=0;break;
+      case "f": case "F": case "f*": case "B": case "B*": case "b": case "b*":
+      case "S": case "s": case "fill": case "eofill": case "stroke": case "ufill": case "ueofill":
+        if(t==="b"||t==="b*"||t==="s")close();
+        flush(true);st.length=0;break;
+      case "q": case "gsave": gs.push(ctm.slice());st.length=0;break;
+      case "Q": case "grestore": if(gs.length)ctm=gs.pop();st.length=0;break;
+      case "cm": case "concat": {const a=nums(6);ctm=mMul(a,ctm);st.length=0;break;}
+      case "scale": {const a=nums(2);ctm=mMul([a[0],0,0,a[1],0,0],ctm);st.length=0;break;}
+      case "translate": {const a=nums(2);ctm=mMul([1,0,0,1,a[0],a[1]],ctm);st.length=0;break;}
+      case "rotate": {const a=nums(1),r=a[0]*Math.PI/180,cs=Math.cos(r),sn=Math.sin(r);
+        ctm=mMul([cs,sn,-sn,cs,0,0],ctm);st.length=0;break;}
+      case "BI": inImage=true;st.length=0;break;
+      case "Tj": case "TJ": case "'": case '"': case "show": case "ashow":
+      case "widthshow": case "awidthshow": case "xshow": ctx.text=true;st.length=0;break;
+      case "Do": {
+        const nm=st.length?st[st.length-1]:null;st.length=0;
+        if(ctx.form&&nm&&nm[0]==='/'&&ctx.depth<8){
+          const sub=ctx.form(nm.slice(1));
+          if(sub&&sub.tokens){
+            const save=ctx.ctm,sd=ctx.depth,sf=ctx.form;
+            ctx.ctm=sub.matrix?mMul(sub.matrix,ctm):ctm;ctx.depth=sd+1;
+            if(sub.form)ctx.form=sub.form;
+            psRun(sub.tokens,ctx);
+            ctx.ctm=save;ctx.depth=sd;ctx.form=sf;
+          }
+        }
+        break;}
+      default: st.length=0;
+    }
+  }
+  flush(false);
+}
+/* Bytes to a one-byte-per-character string. A PDF is a binary file with an
+   ASCII skeleton, so the structure has to be searched as text while the stream
+   payloads stay byte-exact. */
+function latin1(u){let s="",n=u.length;for(let i=0;i<n;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,Math.min(n,i+8192)));return s;}
+function b85(s){
+  const out=[];let t=0,c=0;
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(ch==='~')break;
+    if(ch==='z'&&c===0){out.push(0,0,0,0);continue;}
+    const v=s.charCodeAt(i)-33;
+    if(v<0||v>84)continue;
+    t=t*85+v;c++;
+    if(c===5){out.push((t>>>24)&255,(t>>>16)&255,(t>>>8)&255,t&255);t=0;c=0;}
+  }
+  if(c){for(let i=c;i<5;i++)t=t*85+84;
+    const b=[(t>>>24)&255,(t>>>16)&255,(t>>>8)&255,t&255];
+    for(let i=0;i<c-1;i++)out.push(b[i]);}
+  return new Uint8Array(out);
+}
+function bhex(s){const out=[];let hi=-1;
+  for(let i=0;i<s.length;i++){const ch=s[i];if(ch==='>')break;
+    const v=parseInt(ch,16);if(isNaN(v))continue;
+    if(hi<0)hi=v;else{out.push(hi*16+v);hi=-1;}}
+  if(hi>=0)out.push(hi*16);
+  return new Uint8Array(out);}
+async function inflate(u){
+  /* WebView2 and Chromium both ship DecompressionStream, so nothing has to be
+     bundled for this. PDF's FlateDecode is zlib-wrapped; a few writers emit it
+     raw, hence the second attempt. */
+  for(const fmt of ["deflate","deflate-raw"]){
+    try{
+      const ds=new DecompressionStream(fmt);
+      const w=ds.writable.getWriter();w.write(u);w.close();
+      const parts=[],rd=ds.readable.getReader();
+      for(;;){const {done,value}=await rd.read();if(done)break;parts.push(value);}
+      let len=0;for(const p of parts)len+=p.length;
+      const outb=new Uint8Array(len);let o=0;for(const p of parts){outb.set(p,o);o+=p.length;}
+      if(len)return outb;
+    }catch(e){}
+  }
+  return null;
+}
+/* Pull every indirect object out of a PDF, including the ones packed inside
+   object streams, which is where a modern writer keeps the page tree. */
+async function pdfObjects(lat){
+  const objs={},re=/(\d+)\s+\d+\s+obj\b/g;let m;
+  while((m=re.exec(lat))){
+    const num=parseInt(m[1],10),s=m.index+m[0].length;
+    const e=lat.indexOf("endobj",s);
+    objs[num]={body:lat.slice(s,e<0?lat.length:e),at:s};
+  }
+  const get=v=>{const r=/^\s*(\d+)\s+\d+\s+R/.exec(v||"");return r?objs[parseInt(r[1],10)]:null;};
+  const streamOf=async o=>{
+    if(!o||o.data!==undefined)return o?o.data:null;
+    o.data=null;
+    const si=o.body.indexOf("stream");
+    if(si<0)return null;
+    const dict=o.body.slice(0,si);
+    let ds=si+6;
+    if(o.body[ds]==='\r')ds++;
+    if(o.body[ds]==='\n')ds++;
+    let len=-1;const lm=/\/Length\s+(\d+)(?!\s+\d+\s+R)/.exec(dict);
+    if(lm)len=parseInt(lm[1],10);
+    else{const lr=/\/Length\s+(\d+)\s+\d+\s+R/.exec(dict);
+      if(lr&&objs[parseInt(lr[1],10)]){const q=/(-?\d+)/.exec(objs[parseInt(lr[1],10)].body);if(q)len=parseInt(q[1],10);}}
+    let raw=o.body.slice(ds,len>=0?ds+len:undefined);
+    if(len<0||raw.indexOf("endstream")>=0){const es=o.body.indexOf("endstream",ds);if(es>=0)raw=o.body.slice(ds,es);}
+    let u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i)&255;
+    const filt=(/\/Filter\s*(\[[^\]]*\]|\/\w+)/.exec(dict)||[])[1]||"";
+    if(/ASCII85/.test(filt))u=b85(latin1(u));
+    else if(/ASCIIHex/.test(filt))u=bhex(latin1(u));
+    if(/Fl(ate)?Decode/.test(filt)){const d=await inflate(u);if(!d)return (o.data=null);u=d;}
+    else if(/LZW/.test(filt))return (o.data=null);   /* nobody has written LZW since Acrobat 4 */
+    o.data=u;return u;
+  };
+  /* object streams: N pairs of "objnum offset" then the objects themselves */
+  for(const k of Object.keys(objs)){
+    const o=objs[k];
+    if(!/\/Type\s*\/ObjStm/.test(o.body))continue;
+    const d=await streamOf(o);if(!d)continue;
+    const txt=latin1(d);
+    const N=parseInt((/\/N\s+(\d+)/.exec(o.body)||[])[1]||"0",10);
+    const first=parseInt((/\/First\s+(\d+)/.exec(o.body)||[])[1]||"0",10);
+    const head=txt.slice(0,first).trim().split(/\s+/);
+    for(let i=0;i<N;i++){
+      const num=parseInt(head[i*2],10),off=parseInt(head[i*2+1],10);
+      if(isNaN(num)||isNaN(off)||objs[num])continue;
+      const end=(i+1<N&&!isNaN(parseInt(head[i*2+3],10)))?first+parseInt(head[i*2+3],10):txt.length;
+      objs[num]={body:txt.slice(first+off,end)};
+    }
+  }
+  return {objs,get,streamOf};
+}
+async function pdfPaths(buf){
+  const lat=latin1(new Uint8Array(buf));
+  if(/\/Encrypt\b/.test(lat)&&/trailer|\/Type\s*\/XRef/.test(lat)&&/\/Encrypt\s+\d+\s+\d+\s+R/.test(lat))
+    throw new Error("that PDF is password-protected or encrypted. Save it again without security, or send the SVG.");
+  const {objs,get,streamOf}=await pdfObjects(lat);
+  /* find page 1 the way a reader does: catalog, page tree, first leaf */
+  let page=null;
+  const rootRef=(/\/Root\s+(\d+)\s+\d+\s+R/.exec(lat)||[])[1];
+  const firstLeaf=(node,depth)=>{
+    if(!node||depth>32)return null;
+    if(/\/Type\s*\/Page[^s]/.test(node.body+" "))return node;
+    const km=/\/Kids\s*\[([^\]]*)\]/.exec(node.body);
+    if(!km)return null;
+    const kids=km[1].match(/\d+\s+\d+\s+R/g)||[];
+    for(const k of kids){const kid=get(k);const r=firstLeaf(kid,depth+1);if(r)return r;}
+    return null;};
+  if(rootRef&&objs[parseInt(rootRef,10)]){
+    const pagesRef=(/\/Pages\s+(\d+)\s+\d+\s+R/.exec(objs[parseInt(rootRef,10)].body)||[])[1];
+    if(pagesRef)page=firstLeaf(objs[parseInt(pagesRef,10)],0);
+  }
+  if(!page){for(const k of Object.keys(objs).sort((a,b)=>a-b)){
+    if(/\/Type\s*\/Page[^s]/.test(objs[k].body+" ")){page=objs[k];break;}}}
+  if(!page)throw new Error("no page found in that PDF.");
+  /* content: one stream or an array of them, concatenated as one stream */
+  let content="";
+  const cm=/\/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)/.exec(page.body);
+  if(cm){for(const ref of (cm[1].match(/\d+\s+\d+\s+R/g)||[])){
+    const d=await streamOf(get(ref));if(d)content+=latin1(d)+"\n";}}
+  if(!content.trim())throw new Error("that PDF's page has no drawable content.");
+  /* form XObjects, so art wrapped in a form still comes through */
+  const resOf=body=>{const rm=/\/Resources\s*(\d+\s+\d+\s+R|<<)/.exec(body);
+    if(!rm)return "";
+    if(rm[1]!=="<<"){const o=get(rm[1]);return o?o.body:"";}
+    let i=rm.index+rm[0].length-2,d=0,j=i;
+    for(;j<body.length-1;j++){if(body[j]==='<'&&body[j+1]==='<'){d++;j++;}
+      else if(body[j]==='>'&&body[j+1]==='>'){d--;j++;if(!d){j++;break;}}}
+    return body.slice(i,j);};
+  const cache={};
+  const makeForm=resBody=>{
+    const xm=/\/XObject\s*(\d+\s+\d+\s+R|<<[^>]*>>)/.exec(resBody||"");
+    if(!xm)return null;
+    let dict=xm[1];
+    if(dict!=="<<"&&/^\d/.test(dict)){const o=get(dict);dict=o?o.body:"";}
+    return name=>{
+      const rm=new RegExp("/"+name.replace(/[^\w]/g,"\\$&")+"\\s+(\\d+)\\s+\\d+\\s+R").exec(dict);
+      if(!rm)return null;
+      const o=objs[parseInt(rm[1],10)];
+      if(!o||!/\/Subtype\s*\/Form/.test(o.body))return null;
+      if(cache[rm[1]])return cache[rm[1]];
+      if(!o.data)return null;                          /* pre-decoded below */
+      const mm=/\/Matrix\s*\[([^\]]*)\]/.exec(o.body);
+      const mat=mm?mm[1].trim().split(/\s+/).map(Number):null;
+      return (cache[rm[1]]={tokens:psTokens(latin1(o.data)),
+        matrix:(mat&&mat.length===6&&mat.every(isFinite))?mat:null,
+        form:makeForm(resOf(o.body))});
+    };};
+  /* decode every form stream up front - the interpreter is synchronous */
+  for(const k of Object.keys(objs))if(/\/Subtype\s*\/Form/.test(objs[k].body))await streamOf(objs[k]);
+  const ctx={out:[],ctm:[1,0,0,1,0,0],tol:CURVE_TOL*72,depth:0,text:false,
+             form:makeForm(resOf(page.body))};
+  psRun(psTokens(content),ctx);
+  return ctx;
+}
+function importPDF(file){
+  const r=new FileReader();
+  r.onload=async()=>{
+    try{
+      const ctx=await pdfPaths(r.result);
+      if(!ctx.out.length){
+        alert(ctx.text
+          ? "That PDF has live text in it and no cuttable outlines.\n\nA cutter has no fonts - it can only follow a line. Open the PDF in Illustrator, Inkscape or Affinity, select all, convert the type to outlines, and save it again. Then it will come straight in."
+          : "No cuttable paths found in that PDF.");
+        return;}
+      /* PDF user space is 1/72 in with y pointing up */
+      const subs=ctx.out.map(L=>L.map(p=>[p[0]/72,-p[1]/72])),bb=bboxOf(subs);
+      addObject(subs,file.name,bb.h);
+      toast("PDF: "+subs.length+" path"+(subs.length===1?"":"s")+"  →  "+bb.w.toFixed(3)+" × "+bb.h.toFixed(3)+" in"
+        +(ctx.text?"   (live text was skipped - outline it to cut it)":""));
+    }catch(e){alert("PDF import failed: "+(e.message||e));}
+  };
+  r.readAsArrayBuffer(file);
+}
+function importEPS(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      let u=new Uint8Array(r.result);
+      /* A DOS EPS carries a binary header with a screen preview bolted on the
+         front; bytes 4-7 say where the actual PostScript starts. */
+      if(u.length>30&&u[0]===0xC5&&u[1]===0xD0&&u[2]===0xD3&&u[3]===0xC6){
+        const dv=new DataView(r.result),off=dv.getUint32(4,true),len=dv.getUint32(8,true);
+        if(off>0&&off+len<=u.length)u=u.subarray(off,off+len);
+      }
+      const ctx={out:[],ctm:[1,0,0,1,0,0],tol:CURVE_TOL*72,depth:0,text:false,form:null};
+      psRun(psTokens(latin1(u)),ctx);
+      if(!ctx.out.length){
+        alert(ctx.text
+          ? "That EPS draws its text with a font rather than as outlines, so there is nothing for a blade to follow.\n\nOpen it, convert the type to outlines, and save it again."
+          : "No cuttable paths found in that EPS.");
+        return;}
+      const subs=ctx.out.map(L=>L.map(p=>[p[0]/72,-p[1]/72])),bb=bboxOf(subs);
+      addObject(subs,file.name,bb.h);
+      toast("EPS: "+subs.length+" path"+(subs.length===1?"":"s")+"  →  "+bb.w.toFixed(3)+" × "+bb.h.toFixed(3)+" in");
+    }catch(e){alert("EPS import failed: "+(e.message||e));}
+  };
+  r.readAsArrayBuffer(file);
+}
 let traceData=null,lastTraceId=null,lastTraceIds=null;
 /* traceSource is the photo exactly as it came in and is never written to;
    every filter run builds a fresh copy from it, so sliders can go back and
@@ -1086,7 +2343,21 @@ function studioImport(f){const r=new FileReader();r.onload=()=>{
   if(!png){alert("Couldn't find cut lines or an image inside that .studio3 (proprietary format). Export a PNG or SVG from Silhouette Studio and I'll cut that.");return;}
   loadImageForTrace(URL.createObjectURL(new Blob([png],{type:"image/png"})));
 };r.onerror=()=>alert("Couldn't read that file.");r.readAsArrayBuffer(f);}
-function onVecFile(f){const ext=(f.name.split(".").pop()||"").toLowerCase();if(ext==="dxf"){importDXF(f);return;}if(ext==="svg"){importSVG(f);return;}if(ext==="studio3"||ext==="studio"){studioImport(f);return;}if(["png","jpg","jpeg","gif","bmp","webp"].indexOf(ext)<0){alert("Unsupported file. Use SVG, DXF, an image, or a Silhouette .studio3.");return;}loadImageForTrace(URL.createObjectURL(f));}
+function onVecFile(f){const ext=(f.name.split(".").pop()||"").toLowerCase();
+  if(ext==="dxf"){importDXF(f);return;}
+  if(ext==="svg"){importSVG(f);return;}
+  if(ext==="pdf"){importPDF(f);return;}
+  if(ext==="eps"||ext==="ps"){importEPS(f);return;}
+  /* An .ai file is a PDF with an Illustrator wrapper if it was saved with PDF
+     compatibility on (the default since Illustrator 9), and plain PostScript
+     if it was not. Sniff the first bytes rather than guessing from the name. */
+  if(ext==="ai"){const h=new FileReader();
+    h.onload=()=>{const s=String.fromCharCode.apply(null,new Uint8Array(h.result));
+      if(s.indexOf("%PDF")>=0)importPDF(f);else importEPS(f);};
+    h.readAsArrayBuffer(f.slice(0,1024));return;}
+  if(ext==="studio3"||ext==="studio"){studioImport(f);return;}
+  if(["png","jpg","jpeg","gif","bmp","webp"].indexOf(ext)<0){alert("Unsupported file. Use SVG, DXF, PDF, EPS, AI, an image, or a Silhouette .studio3.");return;}
+  loadImageForTrace(URL.createObjectURL(f));}
 function isDark(fill){if(!fill)return false;const m=fill.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/i);let r,g,b;if(m){r=+m[1];g=+m[2];b=+m[3];}else if(fill[0]==="#"){const h=fill.slice(1);if(h.length===3){r=parseInt(h[0]+h[0],16);g=parseInt(h[1]+h[1],16);b=parseInt(h[2]+h[2],16);}else{r=parseInt(h.slice(0,2),16);g=parseInt(h.slice(2,4),16);b=parseInt(h.slice(4,6),16);}}else return false;return (0.299*r+0.587*g+0.114*b)<128;}
 function sampleGeom(el,out){let t=0;try{t=el.getTotalLength();}catch(e){return;}if(!t||!isFinite(t))return;const step=Math.max(0.3,t/1400),ctm=el.getCTM(),pts=[];for(let d=0;d<=t;d+=step){let p=el.getPointAtLength(d);if(ctm)p=p.matrixTransform?p.matrixTransform(ctm):p;pts.push([p.x,p.y]);}if(pts.length>1)out.push(pts);}
 function svgStringToSubpaths(svgStr,darkOnly){const doc=new DOMParser().parseFromString(svgStr,"image/svg+xml"),svg=doc.documentElement,holder=document.createElement("div");holder.style.cssText="position:absolute;left:-99999px;top:-99999px";holder.appendChild(svg);document.body.appendChild(holder);const out=[],NS="http://www.w3.org/2000/svg";svg.querySelectorAll("path,polygon,polyline").forEach(el=>{if(darkOnly){const f=el.getAttribute("fill")||el.style.fill||"";if(!isDark(f))return;}if(el.tagName.toLowerCase()==="path"){const d=el.getAttribute("d")||"",segs=d.split(/(?=[Mm])/).filter(s=>s.trim());for(const seg of segs){const tp=document.createElementNS(NS,"path");tp.setAttribute("d",seg);el.parentNode.appendChild(tp);sampleGeom(tp,out);el.parentNode.removeChild(tp);}}else sampleGeom(el,out);});document.body.removeChild(holder);return out;}
@@ -1678,6 +2949,19 @@ function draw(){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+M
     }
   }}
   drawGroupUI(P,ppi);drawMarquee(P);
+  /* the live eraser stroke, drawn at its true width so what you see is exactly
+     what is about to be taken out */
+  if(eraseStroke&&eraseStroke.pts.length){
+    const w=Math.max(1,eraseStroke.w*ppi);
+    ctx.save();ctx.lineWidth=w;ctx.lineJoin="round";
+    ctx.lineCap=eraseStroke.cap==="square"?"butt":"round";
+    ctx.strokeStyle="rgba(221,51,51,.34)";
+    ctx.beginPath();eraseStroke.pts.forEach((q,i)=>{const [px,py]=P(q[0],q[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+    if(eraseStroke.pts.length===1){const [px,py]=P(eraseStroke.pts[0][0],eraseStroke.pts[0][1]);ctx.lineTo(px+0.01,py);}
+    ctx.stroke();
+    ctx.lineWidth=1;ctx.strokeStyle="rgba(221,51,51,.85)";ctx.stroke();
+    ctx.restore();
+  }
   ctx.restore();
   drawNodes();
   drawRulers(ox,oy,ppi,viewLen,matW,L);
@@ -1741,7 +3025,9 @@ function handleCursor(key,o){
   return ["ew-resize","nwse-resize","ns-resize","nesw-resize"][q];
 }
 let drag=null,marq=null;
-cv.addEventListener("mousedown",e=>{const {x,y}=evtCanvas(e);if(state.tool==="node"){nodeMouseDown(x,y,e);return;}if(state.tool==="zoom"){const L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom),f=e.shiftKey?1/1.4:1.4;view.zoom=Math.min(24,Math.max(0.15,view.zoom*f));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();return;}
+cv.addEventListener("mousedown",e=>{const {x,y}=evtCanvas(e);if(state.tool==="node"){nodeMouseDown(x,y,e);return;}
+  if(state.tool==="erase"&&e.button===0){const w=screenToWorld(x,y);eraseBegin(w.wx,w.wy);drag={mode:"erase"};draw();return;}
+  if(state.tool==="zoom"){const L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom),f=e.shiftKey?1/1.4:1.4;view.zoom=Math.min(24,Math.max(0.15,view.zoom*f));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();return;}
   /* a multi-selection gets its own transform box; those handles win over the single-object ones */
   if(multiSel()&&state.tool!=="pan"){
     const gh=groupHit(x,y);
@@ -1777,6 +3063,8 @@ cv.addEventListener("mousedown",e=>{const {x,y}=evtCanvas(e);if(state.tool==="no
     marq={x0:wx,y0:wy,x1:wx,y1:wy,add};drag={mode:"marq"};draw();
   }else drag={mode:"pan",sx:e.clientX,sy:e.clientY,px:view.panx,py:view.pany};});
 window.addEventListener("mousemove",e=>{const {x,y}=evtCanvas(e),{wx,wy}=screenToWorld(x,y);if(x>=RL&&y>=RT)$("coord").textContent=`X: ${wx.toFixed(2)}"  Y: ${wy.toFixed(2)}"`;
+  if(state.tool==="erase"){eraseCursor.at=[e.clientX,e.clientY];eraseCursor();
+    if(drag&&drag.mode==="erase"){eraseMove(wx,wy,e.shiftKey);return;}return;}
   if(state.tool==="node"){nodeMouseMove(wx,wy);return;}
   if(!drag){if(state.tool==="select"){
       if(multiSel()){const gh=groupHit(x,y);cv.style.cursor=gh?(gh.key==="rot"?"grab":"nwse-resize"):"default";}
@@ -1831,6 +3119,7 @@ window.addEventListener("mousemove",e=>{const {x,y}=evtCanvas(e),{wx,wy}=screenT
     for(const sn of drag.snap){const o=state.objects.find(z=>z.id===sn.id);if(o){o.posX=sn.px+dx;o.posY=sn.py+dy;}}
     syncInputs();draw();}});
 window.addEventListener("mouseup",()=>{
+  if(drag&&drag.mode==="erase"){drag=null;eraseCommit();return;}
   if(nodeDrag){const o=state.objects.find(z=>z.id===nodeDrag.id);if(o){objCommitNodes(o);syncInputs();draw();}nodeDrag=null;histDropIfSame();}
   if(drag&&drag.mode==="marq"&&marq){
     const r={x0:Math.min(marq.x0,marq.x1),y0:Math.min(marq.y0,marq.y1),x1:Math.max(marq.x0,marq.x1),y1:Math.max(marq.y0,marq.y1)},
@@ -1847,9 +3136,73 @@ const NSEG=24;let nodeSel=null,nodeDrag=null;
 function objFwd(o){const sx=objSX(o),sy=objSY(o),{minX,minY,w,h}=o.bbox,desW=w*sx,desH=h*sy,rot=o.rotation*Math.PI/180,cx=desW/2,cy=desH/2,cos=Math.cos(rot),sin=Math.sin(rot);return (lx,ly)=>{let nx=(lx-minX)*sx,ny=(ly-minY)*sy;if(o.mirror)nx=desW-nx;const dx=nx-cx,dy=ny-cy;return [dx*cos-dy*sin+cx+o.posX,dx*sin+dy*cos+cy+o.posY];};}
 function objInv(o){const sx=objSX(o),sy=objSY(o),{minX,minY,w,h}=o.bbox,desW=w*sx,rot=o.rotation*Math.PI/180,cx=desW/2,cy=(h*sy)/2,cos=Math.cos(rot),sin=Math.sin(rot);return (wx,wy)=>{const dx=wx-o.posX-cx,dy=wy-o.posY-cy;const rx=dx*cos+dy*sin,ry=-dx*sin+dy*cos;let nx=rx+cx,ny=ry+cy;if(o.mirror)nx=desW-nx;return [nx/sx+minX,ny/sy+minY];};}
 function isSmoothNode(n){if(!n.hIn||!n.hOut)return false;const ax=n.hIn[0]-n.x,ay=n.hIn[1]-n.y,bx=n.hOut[0]-n.x,by=n.hOut[1]-n.y,la=Math.hypot(ax,ay),lb=Math.hypot(bx,by);if(la<1e-6||lb<1e-6)return false;return (ax*bx+ay*by)/(la*lb)<-0.985;}
-function nodesToSubpaths(nodes){const out=[];for(const sp of nodes){const pts=sp.pts;if(!pts||pts.length<2)continue;const line=[[pts[0].x,pts[0].y]];const segs=sp.closed?pts.length:pts.length-1;for(let i=0;i<segs;i++){const a=pts[i],b=pts[(i+1)%pts.length];if(a.hOut&&b.hIn)sampleCubic([a.x,a.y],a.hOut,b.hIn,[b.x,b.y],NSEG).forEach(p=>line.push(p));else line.push([b.x,b.y]);}out.push(line);}return out;}
-function objFwdRebuild(o){o.subpaths=nodesToSubpaths(o.nodes);}
-function objCommitNodes(o){if(!o.nodes)return;const oldSX=objSX(o),oldSY=objSY(o),p0=(o.nodes[0]&&o.nodes[0].pts[0])?[o.nodes[0].pts[0].x,o.nodes[0].pts[0].y]:null,wB=p0?objFwd(o)(p0[0],p0[1]):null;o.subpaths=nodesToSubpaths(o.nodes);o.bbox=bboxOf(o.subpaths);o.width=Math.max(0.05,o.bbox.w*oldSX);o.height=Math.max(0.05,o.bbox.h*oldSY);if(p0){const wA=objFwd(o)(p0[0],p0[1]);o.posX+=wB[0]-wA[0];o.posY+=wB[1]-wA[1];}}
+/* ---- Adaptive curve flattening ------------------------------------------
+   A curve is stored as a Bezier but cut as straight lines, so at some point
+   it has to be chopped into segments.  Chopping every curve into the SAME
+   number of segments - which is what a fixed NSEG does - is wrong in both
+   directions at once: a letterform curve a tenth of an inch across gets far
+   more points than the blade can resolve, and a ten-inch sweep on a big
+   sign gets nowhere near enough.  Measured on a 10 in radius curve, 24 fixed
+   segments left the cut 0.147 mm off the true arc, which is visible on a
+   long shallow edge.
+
+   So instead: split the curve in half, look at how far it bows away from the
+   straight line between its ends, and stop splitting once that bow is under
+   the tolerance.  Error falls with the square of the split count, so a few
+   levels of recursion buys a lot of accuracy, and small curves stop early.
+   The bow is bounded by three quarters of the greatest perpendicular
+   distance of the two control points from the chord - a standard result,
+   and cheap: the cross products below are that distance times the chord
+   length, so the whole test stays in squared arithmetic with no sqrt. */
+const CURVE_TOL=0.0003;          /* inches of chord error we will accept - 0.0076 mm, finer than any blade */
+const CURVE_DEPTH=18;            /* hard recursion floor; nothing real gets near it */
+function flatCubic(out,p0,p1,p2,p3,tol,depth){
+  const dx=p3[0]-p0[0],dy=p3[1]-p0[1],ll=dx*dx+dy*dy;
+  if(depth<CURVE_DEPTH){
+    let split;
+    if(ll<1e-18){
+      /* the two ends coincide - a closed loop in one segment, where the chord
+         test is meaningless. Fall back to measuring the handles directly. */
+      split=Math.hypot(p1[0]-p0[0],p1[1]-p0[1])>tol||Math.hypot(p2[0]-p0[0],p2[1]-p0[1])>tol;
+    }else{
+      const d1=Math.abs((p1[0]-p0[0])*dy-(p1[1]-p0[1])*dx),
+            d2=Math.abs((p2[0]-p0[0])*dy-(p2[1]-p0[1])*dx),
+            m=(d1>d2?d1:d2);
+      split=(m*m*9)>(tol*tol*ll*16);
+    }
+    if(split){
+      /* de Casteljau at the midpoint - exact, no trig, no rounding drift */
+      const a0=[(p0[0]+p1[0])/2,(p0[1]+p1[1])/2],
+            a1=[(p1[0]+p2[0])/2,(p1[1]+p2[1])/2],
+            a2=[(p2[0]+p3[0])/2,(p2[1]+p3[1])/2],
+            b0=[(a0[0]+a1[0])/2,(a0[1]+a1[1])/2],
+            b1=[(a1[0]+a2[0])/2,(a1[1]+a2[1])/2],
+            mid=[(b0[0]+b1[0])/2,(b0[1]+b1[1])/2];
+      flatCubic(out,p0,a0,b0,mid,tol,depth+1);
+      flatCubic(out,mid,b1,a2,p3,tol,depth+1);
+      return;
+    }
+  }
+  out.push([p3[0],p3[1]]);
+}
+/* Node coordinates are in the object's own bbox space, not in inches, so an
+   inch-denominated tolerance has to be divided by the object's scale before
+   it can be used here. Callers that know the scale pass tol in; callers that
+   do not (import paths, where the object does not exist yet) get a tolerance
+   scaled off the artwork's own diagonal instead, which is unit-agnostic. */
+function nodesTol(nodes,tol){
+  if(tol>0&&isFinite(tol))return tol;
+  let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;
+  for(const sp of nodes)for(const p of sp.pts){if(p.x<a)a=p.x;if(p.y<b)b=p.y;if(p.x>c)c=p.x;if(p.y>d)d=p.y;}
+  const diag=Math.hypot(c-a,d-b);
+  return diag>0?diag/20000:1e-4;
+}
+function nodesToSubpaths(nodes,tol){const T=nodesTol(nodes,tol),out=[];for(const sp of nodes){const pts=sp.pts;if(!pts||pts.length<2)continue;const line=[[pts[0].x,pts[0].y]];const segs=sp.closed?pts.length:pts.length-1;for(let i=0;i<segs;i++){const a=pts[i],b=pts[(i+1)%pts.length];if(a.hOut&&b.hIn)flatCubic(line,[a.x,a.y],a.hOut,b.hIn,[b.x,b.y],T,0);else line.push([b.x,b.y]);}out.push(line);}return out;}
+/* the inch tolerance expressed in this object's local units; the larger of the
+   two scales is used, which makes the result the finer of the two */
+function objTol(o){const s=Math.max(Math.abs(objSX(o)),Math.abs(objSY(o)));return s>1e-9?CURVE_TOL/s:CURVE_TOL;}
+function objFwdRebuild(o){o.subpaths=nodesToSubpaths(o.nodes,objTol(o));}
+function objCommitNodes(o){if(!o.nodes)return;const oldSX=objSX(o),oldSY=objSY(o),tol=objTol(o),p0=(o.nodes[0]&&o.nodes[0].pts[0])?[o.nodes[0].pts[0].x,o.nodes[0].pts[0].y]:null,wB=p0?objFwd(o)(p0[0],p0[1]):null;o.subpaths=nodesToSubpaths(o.nodes,tol);o.bbox=bboxOf(o.subpaths);o.width=Math.max(0.05,o.bbox.w*oldSX);o.height=Math.max(0.05,o.bbox.h*oldSY);if(p0){const wA=objFwd(o)(p0[0],p0[1]);o.posX+=wB[0]-wA[0];o.posY+=wB[1]-wA[1];}}
 function ensureNodes(o){if(o.nodes)return;o.nodes=(o.subpaths||[]).map(line=>{const pts=line.map(([x,y])=>({x,y,hIn:null,hOut:null,sm:false}));let closed=false;if(pts.length>2){const f=pts[0],l=pts[pts.length-1];if(Math.hypot(l.x-f.x,l.y-f.y)<1e-6){pts.pop();closed=true;}}return{closed,pts};});}
 function lerp(a,b,t){return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
 function cubicAt(p0,p1,p2,p3,t){const m=1-t;return[m*m*m*p0[0]+3*m*m*t*p1[0]+3*m*t*t*p2[0]+t*t*t*p3[0],m*m*m*p0[1]+3*m*m*t*p1[1]+3*m*t*t*p2[1]+t*t*t*p3[1]];}
@@ -1895,6 +3248,14 @@ function drawNodes(){const o=selected();ndPanelSync();if(!o||state.tool!=='node'
   for(let si=0;si<o.nodes.length;si++){const pts=o.nodes[si].pts;for(let pi=0;pi<pts.length;pi++){const n=pts[pi],[ax,ay]=S(n.x,n.y),selN=nodeSel&&nodeSel.si===si&&nodeSel.pi===pi;ctx.lineWidth=1.4;ctx.strokeStyle="#0a2a55";if(n.sm){ctx.fillStyle=selN?"#ff3b30":"#1e6fe0";ctx.beginPath();ctx.arc(ax,ay,4.5,0,7);ctx.fill();ctx.stroke();}else{ctx.fillStyle=selN?"#ff3b30":"#19a15a";ctx.fillRect(ax-4,ay-4,8,8);ctx.strokeRect(ax-4,ay-4,8,8);}}}
   ctx.restore();}
 cv.addEventListener("dblclick",e=>{if(state.tool!=='node')return;const{x,y}=evtCanvas(e),o=selected();if(!o)return;ensureNodes(o);const hit=nodeHit(o,x,y);if(hit&&hit.part==='anchor'){histPush();nodeToggleType(o,hit.si,hit.pi);nodeSel={si:hit.si,pi:hit.pi};draw();}else{histPush();if(nodeInsert(o,x,y)){objCommitNodes(o);draw();}else{undoDiscard();}}});
+/* [ and ] step the eraser tip, the way every paint program has done it for
+   thirty years - and the steps are multiplicative so it moves fast at both
+   the 1/64 in end and the 1 in end */
+window.addEventListener("keydown",e=>{if(state.tool!=='erase')return;
+  if(/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||''))return;
+  if(e.key==='['){e.preventDefault();eraseSetWidth(eraseWidth()/1.25);}
+  else if(e.key===']'){e.preventDefault();eraseSetWidth(eraseWidth()*1.25);}
+  else if(e.key==='Escape'&&eraseStroke){e.preventDefault();eraseStroke=null;drag=null;draw();}});
 window.addEventListener("keydown",e=>{if(state.tool!=='node')return;if(/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||''))return;if((e.key==='Delete'||e.key==='Backspace')&&nodeSel){const o=selected();if(o){e.preventDefault();histPush();nodeDelete(o,nodeSel.si,nodeSel.pi);draw();}}});
 
 /* ============================ Undo / Redo history ============================ */
@@ -1907,6 +3268,11 @@ function histUI(){const u=$("undoBtn"),r=$("redoBtn");if(u)u.classList.toggle("d
    into one entry, so dragging or typing in a field is a single undo step. */
 function histPush(tag){
   if(histBusy)return;
+  /* Every change to the document passes through here, which makes it the one
+     honest place to notice that the mat no longer matches the last save. Note
+     it is ABOVE the coalescing return: a coalesced push is still a real edit,
+     it just does not deserve its own undo step. */
+  markDirty();
   const now=Date.now();
   if(tag&&tag===histTag&&(now-histTime)<900){histTime=now;return;}
   histTag=tag||null;histTime=now;
@@ -1921,8 +3287,8 @@ function undoDiscard(){histUndo.pop();histBreak();histUI();}
 /* a click that selected but never moved anything should not cost an undo step */
 function histDropIfSame(){if(histUndo.length&&histUndo[histUndo.length-1]===histSnap())undoDiscard();}
 function histReset(){histUndo=[];histRedo=[];histBreak();histUI();}
-function undo(){if(!histUndo.length)return;histRedo.push(histSnap());histApply(histUndo.pop());histBreak();histUI();}
-function redo(){if(!histRedo.length)return;histUndo.push(histSnap());histApply(histRedo.pop());histBreak();histUI();}
+function undo(){if(!histUndo.length)return;histRedo.push(histSnap());histApply(histUndo.pop());histBreak();histUI();markDirty();}
+function redo(){if(!histRedo.length)return;histUndo.push(histSnap());histApply(histRedo.pop());histBreak();histUI();markDirty();}
 
 /* ---- keyboard: nudge / copy / paste / duplicate / delete (select mode) ---- */
 let clipObj=null,clipObjs=[];
@@ -1939,6 +3305,11 @@ window.addEventListener("keydown",e=>{
   if(!mod)return;
   if(k==='z'||k==='Z'){e.preventDefault();if(e.shiftKey)redo();else undo();}
   else if(k==='y'||k==='Y'){e.preventDefault();redo();}
+  /* Ctrl+S is muscle memory in every shop on earth. Letting the browser take it
+     and offer to save the PAGE would be an unkind joke on someone who just
+     spent two hours on a design. */
+  else if(k==='s'||k==='S'){e.preventDefault();saveToFile();}
+  else if(k==='o'||k==='O'){e.preventDefault();openFromFile();}
 });
 window.addEventListener("keydown",e=>{
   if(state.tool==='node')return;
@@ -2030,8 +3401,14 @@ function cutColorUI(doneUpTo){const g=colorGroups(),bb=unionBBox();
   if(btn)btn.onclick=async()=>{
     if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}
     btn.disabled=true;btn.textContent="Cutting…";
-    try{await writeToCutter(hpglBody(groupLines(g[doneUpTo]),bb,hpglMap(bb)));}
-    catch(e){alert("Cut failed: "+(e.message||e));btn.disabled=false;btn.textContent="✂ Cut this layer";return;}
+    /* Do NOT tick this layer off on a write that never landed. The signal is
+       state.connected, not the return value: a failed write drops the link
+       (writeToCutter calls linkLost), and the link is the one fact that cannot
+       be faked by a caller or a stub. */
+    let ok=true;
+    try{ await writeToCutter(hpglBody(groupLines(g[doneUpTo]),bb,hpglMap(bb))); }
+    catch(e){alert("Cut failed: "+(e.message||e));ok=false;}
+    if(!ok||!state.connected){btn.disabled=false;btn.textContent="✂ Cut this layer";return;}
     cutColorUI(doneUpTo+1);
   };}
 function cutByColor(){if(!state.objects.length){alert("Add a design first.");return;}
@@ -2077,8 +3454,10 @@ function tilesUI(doneUpTo){const overlap=Math.max(0,parseFloat(($("tileOv")||{})
     btn.disabled=true;btn.textContent="Cutting…";
     const ls=panelLines(plan.panels[doneUpTo],plan.bb);
     if(!ls||!ls.length){alert("This panel came out empty — nothing to cut here.");tilesUI(doneUpTo+1);return;}
+    let ok=true;
     try{const pb2=bboxOf(ls);await writeToCutter(hpglBody(ls,pb2,hpglMap(pb2)));}
-    catch(e){alert("Cut failed: "+(e.message||e));btn.disabled=false;btn.textContent="✂ Cut this panel";return;}
+    catch(e){alert("Cut failed: "+(e.message||e));ok=false;}
+    if(!ok||!state.connected){btn.disabled=false;btn.textContent="✂ Cut this panel";return;}
     tilesUI(doneUpTo+1);
   };}
 function cutTiles(){if(!state.objects.length){alert("Add a design first.");return;}tilesUI(0);}
@@ -2131,16 +3510,267 @@ function addAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("j
 function delAsset(){const k=$("assetSelect").value;if(!k)return;const a=lsGet("jzakcuts.assets");delete a[k];lsSet("jzakcuts.assets",a);refreshAssets();}
 function jobSnapshot(){return {objects:state.objects.map(o=>({subpaths:o.subpaths,bbox:o.bbox,name:o.name,posX:o.posX,posY:o.posY,height:o.height,width:objWidth(o),rotation:o.rotation,mirror:o.mirror,color:o.color})),settings:{matWidth:$("matWidth").value,matLen:$("matLen").value,cutOrigin:$("cutOrigin").checked,stepsPerIn:$("stepsPerIn").value,speed:$("speed").value,force:$("force").value,bladeOff:$("bladeOff").value,bladeComp:$("bladeComp").checked,flipX:$("flipX").checked,flipY:$("flipY").checked,weed:$("weed").checked,regMarks:$("regMarks").checked}};}
 function applySnapshot(j){if(!j||!j.objects){alert("That file isn't a JZAK Cuts job.");return;}histPush();state.objects=j.objects.map(o=>{const bb=o.bbox||bboxOf(o.subpaths),h=o.height||3;return {id:nextId++,subpaths:o.subpaths,bbox:bb,name:o.name||"object",posX:o.posX||1,posY:o.posY||1,height:h,width:(o.width!=null?o.width:bb.w*(h/(bb.h||1))),rotation:o.rotation||0,mirror:!!o.mirror,color:o.color||"#111"};});state.selIds=state.objects.length?[state.objects[0].id]:[];state.selId=state.selIds[0]||null;const st=j.settings||{},setIf=(id,v)=>{if(v!==undefined&&v!==null)$(id).value=v;};setIf("matWidth",st.matWidth);if(st.matLen!==undefined)$("matLen").value=st.matLen;if(st.cutOrigin!==undefined)$("cutOrigin").checked=st.cutOrigin;setIf("stepsPerIn",st.stepsPerIn);setIf("speed",st.speed);setIf("force",st.force);setIf("bladeOff",st.bladeOff);if(st.bladeComp!==undefined)$("bladeComp").checked=st.bladeComp;if(st.flipX!==undefined)$("flipX").checked=st.flipX;if(st.flipY!==undefined)$("flipY").checked=st.flipY;if(st.weed!==undefined)$("weed").checked=st.weed;if(st.regMarks!==undefined)$("regMarks").checked=st.regMarks;$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;$("frcOut").textContent=$("force").value;renderObjList();syncInputs();resetView();draw();}
-function refreshJobSelect(){const jobs=lsGet("jzakcuts.jobs"),sel=$("jobSelect"),cur=sel.value;sel.innerHTML='<option value="">—</option>'+Object.keys(jobs).map(k=>`<option>${k.replace(/</g,"&lt;")}</option>`).join("");if(jobs[cur])sel.value=cur;}
-function saveJob(){const name=($("jobName").value||"").trim();if(!name){alert("Type a job name in the Job Library box first.");return;}if(!state.objects.length){alert("Add something to save.");return;}const jobs=lsGet("jzakcuts.jobs");jobs[name]=jobSnapshot();lsSet("jzakcuts.jobs",jobs);refreshJobSelect();$("jobSelect").value=name;$("jobName").value="";}
-function loadJob(){const k=$("jobSelect").value;if(!k){alert("Pick a saved job from the dropdown first.");return;}const jobs=lsGet("jzakcuts.jobs");if(jobs[k])applySnapshot(jobs[k]);}
-function deleteJob(){const k=$("jobSelect").value;if(!k)return;const jobs=lsGet("jzakcuts.jobs");delete jobs[k];lsSet("jzakcuts.jobs",jobs);refreshJobSelect();}
+/* ---- the job library -------------------------------------------------------
+ *
+ * Every one of these is async now, because the store is a real database. The
+ * rule they all obey: a save is not reported as done until it has been read
+ * back. Silence is not evidence, and the previous version's silence is what
+ * cost three days of work on the donkey file.
+ */
+async function refreshJobSelect(){
+  const sel=$("jobSelect"); if(!sel) return;
+  const cur=sel.value;
+  let names=[];
+  try{ names=(await jzdb.keys("jobs")).map(String).sort((a,b)=>a.localeCompare(b)); }
+  catch(e){
+    sel.innerHTML='<option value="">— library unavailable —</option>';
+    console.warn("job library unreadable:",e); return;
+  }
+  sel.innerHTML='<option value="">—</option>'+names.map(k=>`<option>${k.replace(/</g,"&lt;")}</option>`).join("");
+  if(names.includes(cur))sel.value=cur;
+}
+async function saveJob(){
+  const name=($("jobName").value||"").trim()||$("jobSelect").value;
+  if(!name){alert("Type a name for this job in the Job Library box first.");return;}
+  if(!state.objects.length){alert("There is nothing on the mat to save.");return;}
+  let exists=false;
+  try{ exists=(await jzdb.get("jobs",name))!=null; }catch(e){}
+  if(exists && !confirm('A job called "'+name+'" already exists.\n\nOverwrite it?'))return;
+  try{
+    await jzdb.put("jobs",name,jobSnapshot());
+    /* read it back before claiming success - this is the whole fix */
+    const check=await jzdb.get("jobs",name);
+    if(!check||!check.objects||check.objects.length!==state.objects.length)
+      throw new Error("the job did not read back correctly");
+    await refreshJobSelect();
+    $("jobSelect").value=name; $("jobName").value="";
+    markSaved(name);
+    toast('Saved "'+name+'" — '+check.objects.length+(check.objects.length===1?" piece":" pieces"));
+  }catch(e){
+    alert('COULD NOT SAVE "'+name+'".\n\n'+(e&&e.message||e)+
+      "\n\nYour design is still on screen and has NOT been lost. Use File ▸ Save to File… "+
+      "to put it straight onto the disk instead — that route does not use the browser's storage at all.");
+  }
+}
+async function loadJob(){
+  const k=$("jobSelect").value;
+  if(!k){alert("Pick a saved job from the dropdown first.");return;}
+  if(!(await confirmDiscard("Loading a job replaces what is on the mat.")))return;
+  try{
+    const j=await jzdb.get("jobs",k);
+    if(!j){alert('"'+k+'" is no longer in the library.');await refreshJobSelect();return;}
+    applySnapshot(j); markSaved(k); toast('Loaded "'+k+'"');
+  }catch(e){ alert("Could not load that job: "+(e&&e.message||e)); }
+}
+async function deleteJob(){
+  const k=$("jobSelect").value; if(!k)return;
+  if(!confirm('Delete "'+k+'" from the library?\n\nThis cannot be undone. If you might want it back, use Export first.'))return;
+  try{ await jzdb.del("jobs",k); await refreshJobSelect(); toast('Deleted "'+k+'"'); }
+  catch(e){ alert("Could not delete that job: "+(e&&e.message||e)); }
+}
+
+/* One-time rescue of anything still sitting in the old localStorage library.
+ * It runs once, keeps the originals until every job has been copied AND read
+ * back, and never overwrites a job of the same name already in the database. */
+async function migrateOldJobs(){
+  let old={};
+  try{ old=JSON.parse(localStorage.getItem("jzakcuts.jobs")||"{}"); }catch(e){ return; }
+  const names=Object.keys(old); if(!names.length)return;
+  let moved=0;
+  for(const n of names){
+    try{
+      if((await jzdb.get("jobs",n))!=null)continue;
+      await jzdb.put("jobs",n,old[n]);
+      if((await jzdb.get("jobs",n))!=null)moved++;
+    }catch(e){ console.warn("could not migrate job",n,e); return; }   /* leave the old copy alone */
+  }
+  try{ localStorage.removeItem("jzakcuts.jobs"); }catch(e){}
+  if(moved){ await refreshJobSelect(); toast(moved+(moved===1?" saved job was":" saved jobs were")+" moved into the new storage.",6000); }
+}
+
+/* ---- autosave and crash recovery -------------------------------------------
+ *
+ * A vinyl job is hours of work and the machine it drives is a machine that gets
+ * power-cycled. Losing the mat because the plotter was switched off is not an
+ * acceptable failure, so the app keeps a running copy of what is on screen in
+ * the "sys" store and offers it back when it reopens.
+ *
+ * This is a SAFETY NET, not a filing system. It holds exactly one document, it
+ * is overwritten constantly, and it is cleared the moment the work is properly
+ * saved. It exists so that nothing is ever lost between saves - not so that
+ * saving becomes optional.
+ */
+const AUTOSAVE_MS=5000;
+let _dirty=false,_autoTimer=null,_lastAutoAt=0,_autoReady=false;
+function markDirty(){
+  _dirty=true;
+  /* Nothing is written until boot has finished and the recovery offer has been
+     answered, or building the default text would overwrite the very record we
+     are about to offer back. */
+  if(_autoReady&&!_autoTimer)_autoTimer=setTimeout(()=>{_autoTimer=null;autosaveNow();},AUTOSAVE_MS);
+  updDocTitle();
+}
+function markSaved(name){
+  _dirty=false;
+  if(name!==undefined)state.docName=name||null;
+  jzdb.del("sys","autosave").catch(()=>{});    /* the net is only needed between saves */
+  updDocTitle();
+}
+function updDocTitle(){
+  const el=$("docTitle"); if(!el)return;
+  el.textContent=(state.docName||"Untitled job")+(_dirty?" •":"");
+  el.title=_dirty?"There are changes since the last save":"Everything is saved";
+}
+async function autosaveNow(){
+  if(!_dirty)return;
+  try{
+    if(!state.objects.length){ await jzdb.del("sys","autosave"); _dirty=false; return; }
+    await jzdb.put("sys","autosave",{at:Date.now(),name:state.docName||null,snap:jobSnapshot()});
+    _lastAutoAt=Date.now(); _dirty=false;
+    const el=$("docTitle"); if(el)el.textContent=(state.docName||"Untitled job");
+  }catch(e){ console.warn("autosave failed:",e); }   /* quiet: it retries in 5s */
+}
+function howLongAgo(ms){
+  const s=Math.max(0,Math.round((Date.now()-ms)/1000));
+  if(s<90)return s+" seconds ago";
+  const m=Math.round(s/60); if(m<90)return m+" minute"+(m===1?"":"s")+" ago";
+  const h=Math.round(m/60); if(h<36)return h+" hour"+(h===1?"":"s")+" ago";
+  return Math.round(h/24)+" days ago";
+}
+/* Offered, never forced - it can't know whether you meant to start clean. */
+async function offerRecovery(){
+  let rec=null;
+  try{ rec=await jzdb.get("sys","autosave"); }catch(e){ return; }
+  if(!rec||!rec.snap||!rec.snap.objects||!rec.snap.objects.length)return;
+  const n=rec.snap.objects.length;
+  const ok=confirm(
+    "JZAK Cuts closed with unsaved work on the mat.\n\n"+
+    "    "+(rec.name?'"'+rec.name+'"':"Untitled job")+"\n"+
+    "    "+n+(n===1?" piece":" pieces")+"\n"+
+    "    last change "+howLongAgo(rec.at)+"\n\n"+
+    "Put it back?\n\n"+
+    "(Cancel starts with an empty mat. The recovered copy is kept either way "+
+    "until you save something over it, so Cancel is not final.)");
+  if(!ok)return;
+  try{ applySnapshot(rec.snap); state.docName=rec.name||null; _dirty=true; updDocTitle();
+       toast("Recovered. Save it properly now — this copy is only a safety net.",7000); }
+  catch(e){ alert("The recovered work could not be rebuilt: "+(e&&e.message||e)); }
+}
+/* A last write on the way out. Best-effort by nature: the browser may not give
+   us the time. That is exactly why the 5-second timer exists as well. */
+function autosaveOnExit(){ if(_dirty)autosaveNow(); }
+window.addEventListener("pagehide",autosaveOnExit);
+window.addEventListener("beforeunload",e=>{
+  autosaveOnExit();
+  if(_dirty&&state.objects.length){ e.preventDefault(); e.returnValue=""; return ""; }
+});
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden")autosaveOnExit(); });
+
+function confirmDiscard(why){
+  if(!_dirty||!state.objects.length)return Promise.resolve(true);
+  return Promise.resolve(confirm(why+"\n\nThere are unsaved changes on the mat. Continue anyway?\n\n"+
+    "(Cancel, then Save, if you want to keep them.)"));
+}
+
+/* ---- .jzak files: designs that live on the disk, not in the browser ---------
+ *
+ * The library above is convenience. THIS is the archive. A .jzak file sits in a
+ * customer folder, gets backed up, gets emailed, and survives the browser being
+ * cleared, the app being reinstalled and the machine being replaced. For a shop
+ * that resells its work, that is the difference between a job you still own in
+ * two years and one you do not.
+ *
+ * It is plain JSON on purpose. Compressing it would roughly quarter it, and it
+ * would also mean that the day something goes wrong the file is a brick. A shop
+ * archive should be openable in Notepad.
+ *
+ * Coordinates are written to six decimal places. That is 25 nanometres on an
+ * inch - four orders of magnitude finer than the blade can place a cut - and it
+ * halves the file, because full double precision spends seventeen characters
+ * per number saying nothing the machine can act on.
+ */
+const JZAK_FILE_VER=1;
+function roundPt(v){return Math.round(v*1e6)/1e6;}
+function fileSnapshot(){
+  const s=jobSnapshot();
+  s.objects=s.objects.map(o=>Object.assign({},o,{
+    subpaths:o.subpaths.map(L=>L.map(p=>[roundPt(p[0]),roundPt(p[1])]))}));
+  return {format:"jzak-cuts-job",version:JZAK_FILE_VER,app:JZAK_VERSION,
+          savedAt:new Date().toISOString(),name:state.docName||null,job:s};
+}
+function parseJzak(text){
+  const d=JSON.parse(text);
+  if(d&&d.format==="jzak-cuts-job"&&d.job)return {snap:d.job,name:d.name||null};
+  if(d&&d.objects)return {snap:d,name:null};        /* a plain snapshot, incl. the old Export */
+  throw new Error("that is not a JZAK Cuts job file");
+}
+function suggestName(){
+  return ((state.docName||$("jobName").value||"jzak-job").trim()
+    .replace(/[\\/:*?"<>|]+/g,"-").replace(/\s+/g," ")||"jzak-job")+".jzak";
+}
+async function saveToFile(){
+  if(!state.objects.length){alert("There is nothing on the mat to save.");return;}
+  const text=JSON.stringify(fileSnapshot());
+  const fname=suggestName();
+  /* Chrome and Edge can write straight to a chosen file, which means Save
+     really means save - no Downloads folder, no duplicate "(3)" copies. */
+  if(window.showSaveFilePicker){
+    try{
+      const h=await showSaveFilePicker({suggestedName:fname,
+        types:[{description:"JZAK Cuts job",accept:{"application/json":[".jzak",".json"]}}]});
+      const w=await h.createWritable(); await w.write(text); await w.close();
+      markSaved((h.name||fname).replace(/\.(jzak|json)$/i,""));
+      toast("Saved to "+(h.name||fname));
+      return;
+    }catch(e){
+      if(e&&e.name==="AbortError")return;                    /* user cancelled */
+      console.warn("file picker unavailable, falling back:",e);
+    }
+  }
+  download(fname,text,"application/json");
+  markSaved(fname.replace(/\.(jzak|json)$/i,""));
+  toast("Saved to your Downloads folder as "+fname,6000);
+}
+async function openFromFile(){
+  if(!(await confirmDiscard("Opening a file replaces what is on the mat.")))return;
+  $("jobOpenFile").click();
+}
+function readJzakFile(f){
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const {snap,name}=parseJzak(String(r.result));
+      applySnapshot(snap);
+      markSaved(name||f.name.replace(/\.(jzak|json)$/i,""));
+      toast("Opened "+f.name);
+    }catch(err){
+      alert("Could not open "+f.name+".\n\n"+(err&&err.message||err)+
+        "\n\nJZAK Cuts job files end in .jzak. To bring in ARTWORK — an SVG, DXF, PDF, EPS or image — use Import File instead.");
+    }
+  };
+  r.onerror=()=>alert("Could not read "+f.name+" off the disk.");
+  r.readAsText(f);
+}
+async function newJob(){
+  if(!(await confirmDiscard("Starting a new job clears the mat.")))return;
+  histPush();
+  state.objects=[];state.selIds=[];state.selId=null;
+  state.docName=null;$("jobName").value="";$("jobSelect").value="";
+  await jzdb.del("sys","autosave").catch(()=>{});
+  _dirty=false;updDocTitle();
+  renderObjList();syncInputs();resetView();draw();
+  toast("New job.");
+}
 
 /* ---- tools + menus ---- */
 function setTool(t){state.tool=t;document.querySelectorAll(".tool[data-tool]").forEach(el=>el.classList.toggle("on",el.dataset.tool===t));
   $("panelText").style.display=t==="text"?"":"none";$("panelImport").style.display=t==="import"?"":"none";$("panelSelect").style.display=(t==="text"||t==="import")?"none":"";
   $("panelNode").style.display=t==="node"?"":"none";
-  cv.style.cursor=t==="pan"?"grab":(t==="zoom"?"zoom-in":(t==="node"?"crosshair":"default"));
+  $("panelErase").style.display=t==="erase"?"":"none";
+  cv.style.cursor=t==="pan"?"grab":(t==="zoom"?"zoom-in":((t==="node"||t==="erase")?"crosshair":"default"));
+  if(t!=="erase"){eraseStroke=null;}
+  eraseCursor();
   if(t==="node"){const o=selected();if(o){ensureNodes(o);}nodeSel=(o&&o.nodes&&o.nodes.length&&o.nodes[0].pts.length)?{si:0,pi:0}:null;}
   if(t==="text")setTimeout(()=>$("textInput").focus(),0);
   $("nodeHint").style.display=t==="node"?"":"none";
@@ -2153,13 +3783,16 @@ const ACT={
   popnone:()=>popReattachAll(true),
   popwin:()=>popOpen(),
   nodetool:()=>{if(!selected()){alert("Select the design you want to edit first.");return;}setTool("node");draw();},
-  savejob:saveJob, loadjob:loadJob, exportsvg:exportSVG, plt:()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}download("jzak-cut.plt",h);},
+  erasetool:()=>setTool("erase"),
+  erasesmall:()=>eraseSetWidth(0.031), erasebig:()=>eraseSetWidth(0.5),
+  savejob:saveJob, loadjob:loadJob, savefile:saveToFile, openfile:openFromFile, newjob:newJob, exportsvg:exportSVG, plt:()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}download("jzak-cut.plt",h);},
   dup:duplicateSel, del:deleteSel, selall:selectAll,
   alignleft:()=>alignSel("left"), alignhc:()=>alignSel("hcenter"), alignright:()=>alignSel("right"),
   aligntop:()=>alignSel("top"), alignvc:()=>alignSel("vcenter"), alignbottom:()=>alignSel("bottom"),
   disth:()=>distributeSel("h"), distv:()=>distributeSel("v"),
   arrfront:()=>arrangeSel("front"), arrforward:()=>arrangeSel("forward"), arrbackward:()=>arrangeSel("backward"), arrback:()=>arrangeSel("back"),
   weld:()=>boolSel("union"), subtract:()=>boolSel("subtract"), intersect:()=>boolSel("intersect"), exclude:()=>boolSel("exclude"),
+  breakapart:breakApartSel, combine:combineSel,
   offsetout:()=>offsetSel(1), offsetin:()=>offsetSel(-1),
   zin:()=>{view.zoom=Math.min(24,view.zoom*1.25);updZoom();draw();}, zout:()=>{view.zoom=Math.max(0.15,view.zoom/1.25);updZoom();draw();}, fit:()=>{resetView();draw();},
   grid:makeGrid, weed:()=>{$("weed").checked=!$("weed").checked;draw();}, reg:()=>{$("regMarks").checked=!$("regMarks").checked;draw();},
@@ -2184,13 +3817,19 @@ const ACT={
     let sTxt="IN;";for(const p of cs){const[X,Y]=map(p[0],p[1]);sTxt+="PU"+X+","+Y+";";}
     sTxt+="PU0,0;";
     await writeToCutter(sTxt);
+    if(!state.connected)return;                /* the write dropped the link and already said so */
     alert("The head just walked the outline of the job with the blade up. If it stayed on your vinyl the whole way round, the cut will too.");}, test:async()=>{if(!state.connected){alert("Connect the cutter first (Cut ▸ Connect Cutter).");return;}await writeToCutter(testCutHPGL());},
   cutcolor:cutByColor, tiles:cutTiles, calib:calibUI,
   viewhpgl:()=>{const h=generateHPGL();if(!h){alert("Add a design first.");return;}const w=window.open("","_blank");w.document.write("<pre>"+h.replace(/;/g,";\n")+"</pre>");},
-  about:()=>alert("JZAK Cuts — Vinyl Cutting Studio for JZac Designs.\nDesign, import, trace, and cut to your USCutter over USB (HPGL).")
+  about:()=>alert("JZAK Cuts "+JZAK_VERSION+" — Vinyl Cutting Studio for JZac Designs.\nDesign, import, trace, and cut to your USCutter over USB (HPGL).\n\nQuote this version number in any bug report.")
 };
 document.querySelectorAll("[data-act]").forEach(el=>el.addEventListener("click",ev=>{const a=el.dataset.act;if(ACT[a]){ev.preventDefault();ACT[a]();}}));
 document.querySelectorAll(".tool[data-tool]").forEach(el=>el.onclick=()=>setTool(el.dataset.tool));
+/* eraser ring housekeeping: follow the width box, and get out of the way when
+   the pointer leaves the mat */
+if($("erWidth"))$("erWidth").addEventListener("input",eraseCursor);
+cv.addEventListener("mouseleave",()=>{const r=$("eraseRing");if(r)r.style.display="none";});
+cv.addEventListener("mouseenter",()=>{if(state.tool==="erase")eraseCursor();});
 
 /* ---- color swatches ---- */
 (function(){const c=$("swatches");VINYL.forEach(col=>{const s=document.createElement("span");s.className="sw";s.style.background=col;s.title=col;s.onclick=()=>{const o=selected();if(o){histPush();o.color=col;draw();}};c.appendChild(s);});})();
@@ -2253,16 +3892,31 @@ $("preset").onchange=e=>applyPreset(e.target.value);
 $("speed").oninput=()=>{$("spdOut").textContent=$("speed").value;$("spdV").textContent=$("speed").value;};$("force").oninput=()=>{$("frcOut").textContent=$("force").value;};
 $("assetSave").onclick=saveAsset;$("assetAdd").onclick=addAsset;$("assetDel").onclick=delAsset;
 $("jobSave").onclick=saveJob;$("jobLoad").onclick=loadJob;$("jobDel").onclick=deleteJob;
-$("jobExport").onclick=()=>{if(!state.objects.length){alert("Add something first.");return;}download(($("jobName").value||"jzak-job")+".json",JSON.stringify(jobSnapshot(),null,1),"application/json");};
-$("jobImportBtn").onclick=()=>$("jobImport").click();
-$("jobImport").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{applySnapshot(JSON.parse(r.result));}catch(err){alert("Couldn't read that job file.");}};r.readAsText(f);};
+$("jobExport").onclick=saveToFile;
+$("jobImportBtn").onclick=openFromFile;
+$("jobImport").onchange=e=>{const f=e.target.files[0];e.target.value="";readJzakFile(f);};
+$("jobOpenFile").onchange=e=>{const f=e.target.files[0];e.target.value="";readJzakFile(f);};
 $("testBtn").onclick=()=>ACT.test();$("pltBtn").onclick=()=>ACT.plt();$("svgOutBtn").onclick=exportSVG;$("hpglBtn").onclick=()=>ACT.viewhpgl();
 
 /* ---- init ---- */
 window.addEventListener("resize",()=>{fitCanvas();draw();});
-checkSerial();fitCanvas();populateFonts();refreshAssets();refreshJobSelect();updZoom();updCalNote();setTool("select");
+checkSerial();fitCanvas();populateFonts();refreshAssets();updZoom();updCalNote();setTool("select");
 ndTolIn();traceFilterLabels();popInitButtons();popRestoreOffer();
-buildText().then(()=>histReset()).catch(()=>histReset());draw();
+setLink(false);updDocTitle();
+
+/* Boot order matters here. The default text is built first and the history is
+   reset, so that whatever the recovery offer puts on the mat is the FIRST thing
+   in the undo stack rather than something stacked on top of a stray letter.
+   Autosaving stays switched off until the offer has been answered - otherwise
+   building that default text would overwrite the very record being offered. */
+buildText().then(()=>histReset()).catch(()=>histReset());
+draw();
+(async()=>{
+  try{ await migrateOldJobs(); }catch(e){ console.warn("job migration skipped:",e); }
+  try{ await refreshJobSelect(); }catch(e){}
+  try{ await offerRecovery(); }catch(e){ console.warn("recovery skipped:",e); }
+  _autoReady=true;                       /* from here on the net is live */
+})();
 </script>
 </body>
 </html>

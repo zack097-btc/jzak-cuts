@@ -4,8 +4,24 @@
 #
 #   python build.py        (run from the repository root)
 
-import re
+import re, json
 src=open('index.src.html',encoding='utf-8').read()
+
+# The version now appears on screen, so it has to be TRUE. Three files carry it
+# — the studio, the Tauri manifest and the crate — and if they disagree the
+# installer says one thing while the app says another. That is worse than no
+# version at all, so the build refuses rather than shipping the contradiction.
+_v = re.search(r'const JZAK_VERSION="([^"]+)"', src)
+assert _v, 'no JZAK_VERSION in index.src.html'
+UIV = _v.group(1)
+_conf = json.load(open('desktop/src-tauri/tauri.conf.json', encoding='utf-8'))
+CONFV = _conf.get('version') or _conf.get('package', {}).get('version')
+CARGOV = re.search(r'^version\s*=\s*"([^"]+)"',
+                   open('desktop/src-tauri/Cargo.toml', encoding='utf-8').read(),
+                   re.M).group(1)
+assert UIV == CONFV == CARGOV, (
+    'version drift: index.src.html=%s tauri.conf.json=%s Cargo.toml=%s' % (UIV, CONFV, CARGOV))
+print('version', UIV, '(studio / tauri.conf / Cargo.toml agree)')
 # Every bundled font, SIL Open Font Licence, base64'd. Kept as its own file
 # rather than pasted into the source so the source stays readable.
 fonts=open('fonts.json',encoding='utf-8').read()
