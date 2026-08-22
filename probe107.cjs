@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
   const errs = [], dlg = [];
   p.on('pageerror', e => errs.push(e.message));
   p.on('dialog', async d => { dlg.push(d.message()); await d.dismiss(); });
-  await p.goto('file:///home/claude/jzak/index.html', { waitUntil: 'load' });
+  await p.goto('file://'+process.cwd()+'/index.html', { waitUntil: 'load' });
   await p.waitForTimeout(400);
 
   const out = await p.evaluate(async () => {

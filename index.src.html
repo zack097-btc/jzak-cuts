@@ -493,7 +493,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
         <option value="hardware">Hardware RTS/CTS — needs a full cable</option>
         <option value="none">None (not recommended)</option>
       </select>
-      <p class="hint" style="margin:6px 0 0">If a cut <b>stops at the same point every time</b>, the cutter&rsquo;s buffer is filling and nothing is telling the computer to wait. Try <b>XON/XOFF</b> first — it needs no extra wires.</p>
+      <p class="hint" style="margin:6px 0 0">If a cut <b>stops at the same point every time</b>, the cutter&rsquo;s buffer is filling and nothing is telling the computer to wait. Try <b>XON/XOFF</b> first — it needs no extra wires. Long traced paths are now split into short commands automatically, which fixes the most common cause.</p>
       <label style="margin-top:10px">Send speed</label>
       <select id="sendPace">
         <option value="0">Normal</option>
@@ -545,7 +545,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
    desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
    agree and refuses to build if they drift, because a shop that cannot tell
    which build is on the machine cannot tell whether a bug has been fixed. */
-const JZAK_VERSION="10.7.0";
+const JZAK_VERSION="10.7.1";
 try{
   const _vb=document.getElementById("verBadge");
   if(_vb)_vb.textContent="v"+JZAK_VERSION;
@@ -865,10 +865,10 @@ async function writeToCutter(str){
       "\n\nYour design is still here and nothing has been lost. Switch the cutter on, "+
       "press Reconnect, and send it again.\n\nIf it had already started cutting, reload the "+
       "vinyl and re-origin before resending.\n\n"+
-      "IF IT STOPS AT THE SAME POINT EVERY TIME, this is not a loose cable — it is the "+
-      "cutter's buffer filling up with nothing telling the computer to wait. In the Cut "+
-      "Settings panel set Handshaking to XON/XOFF, and if that alone does not do it, set "+
-      "Send speed to Slow.");
+      "IF IT STOPS AT THE SAME POINT EVERY TIME, this is not a loose cable. Try, in "+
+      "this order: 1) Handshaking = XON/XOFF in the Link panel. 2) Send speed = Slow. "+
+      "3) If it still dies in the same place, the design has a path your cutter cannot "+
+      "swallow — send the .jzak file in for a look.");
     return false;
   }
 }
@@ -2965,14 +2965,24 @@ const RT=22,RL=34,MG=10;
 function fitCanvas(){const wt=cv.parentElement,r=wt.getBoundingClientRect(),dpr=window.devicePixelRatio||1;cv.width=Math.max(200,Math.floor(r.width*dpr));cv.height=Math.max(150,Math.floor(r.height*dpr));cv.style.width=r.width+"px";cv.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0);}
 function cssSize(){const dpr=window.devicePixelRatio||1;return {W:cv.width/dpr,H:cv.height/dpr};}
 function resetView(){view.zoom=1;view.panx=0;view.pany=0;updZoom();}
+/* Node editing on a 1/16" detail needs real magnification, so the ceiling is
+   400x, not 24x. Grid, handles and hit targets are drawn in screen pixels, so
+   they stay the same size no matter how far in you go. */
+const ZOOM_MAX=400;
 function updZoom(){const t=Math.round(view.zoom*100)+"%";$("zoomLabel").textContent=t;$("zoomLabel2").textContent=t;}
 function layout(){const {W,H}=cssSize(),matW=parseFloat($("matWidth").value||"24"),bb=unionBBox(),
   /* the mat is as long as YOUR material says it is. Set Vinyl length and the
      mat is exactly that; leave it blank and it sizes itself to the work. The
      mat always grows to show everything, so nothing can hide off the end. */
   setLen=parseFloat($("matLen").value),
-  need=Math.ceil((bb.minX+bb.w)+(bb.w>0?1:0)),
-  viewLen=setLen>0?Math.max(setLen,need):Math.max(24,need+2),
+  /* A perfectly straight path has zero height; scaling it to a set height made
+     the bbox Infinite, which made viewLen Infinite, which made the grid loop
+     below never end -- the canvas simply froze. Bad geometry must never be able
+     to hang the studio, so non-finite values collapse to 0 and the mat is
+     capped at 100 feet. */
+  fin=v=>(isFinite(v)?v:0),
+  need=Math.ceil(fin(bb.minX)+fin(bb.w)+(fin(bb.w)>0?1:0)),
+  viewLen=Math.min(1200,setLen>0?Math.max(setLen,need):Math.max(24,need+2)),
   availW=W-RL-MG,availH=H-RT-MG,base=Math.min(availW/viewLen,availH/matW);return {W,H,matW,viewLen,base};}
 function regMarkLines(bb){const m=0.35,len=0.4,L=(x,y,dx,dy)=>[[[x,y],[x+dx*len,y]],[[x,y],[x,y+dy*len]]];let o=[];o=o.concat(L(bb.minX-m,bb.minY-m,1,1));o=o.concat(L(bb.minX+bb.w+m,bb.minY-m,-1,1));o=o.concat(L(bb.minX-m,bb.minY+bb.h+m,1,-1));return o;}
 function draw(){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany,matW=L.matW,viewLen=L.viewLen,bb=unionBBox();
@@ -3053,7 +3063,7 @@ function drawRulers(ox,oy,ppi,viewLen,matW,L){
 function updateDims(){if(!state.objects.length){$("dims").textContent="—";return;}const bb=unionBBox();$("dims").textContent=`Layout ${bb.w.toFixed(2)}×${bb.h.toFixed(2)}"  ·  ${state.objects.length} obj`;}
 function screenToWorld(cx,cy){const L=layout(),ppi=L.base*view.zoom,ox=RL+MG+view.panx,oy=RT+MG+view.pany;return {wx:(cx-ox)/ppi,wy:(cy-oy)/ppi};}
 function evtCanvas(e){const r=cv.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
-cv.addEventListener("wheel",e=>{e.preventDefault();const {x,y}=evtCanvas(e),L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom);view.zoom=Math.min(24,Math.max(0.15,view.zoom*(e.deltaY<0?1.15:1/1.15)));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();},{passive:false});
+cv.addEventListener("wheel",e=>{e.preventDefault();const {x,y}=evtCanvas(e),L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom);view.zoom=Math.min(ZOOM_MAX,Math.max(0.15,view.zoom*(e.deltaY<0?1.15:1/1.15)));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();},{passive:false});
 function objAt(wx,wy){for(let i=state.objects.length-1;i>=0;i--){const o=state.objects[i],b=bboxOf(objPolylines(o));if(wx>=b.minX-.1&&wx<=b.minX+b.w+.1&&wy>=b.minY-.1&&wy<=b.minY+b.h+.1)return o;}return null;}
 /* --- oriented (rotation-aware) selection box: corners, side handles, rotate handle --- */
 /* Local box space is [0,W]x[0,H] BEFORE rotation; T() maps it to world inches. */
@@ -3089,7 +3099,7 @@ function handleCursor(key,o){
 let drag=null,marq=null;
 cv.addEventListener("mousedown",e=>{const {x,y}=evtCanvas(e);if(state.tool==="node"){nodeMouseDown(x,y,e);return;}
   if(state.tool==="erase"&&e.button===0){const w=screenToWorld(x,y);eraseBegin(w.wx,w.wy);drag={mode:"erase"};draw();return;}
-  if(state.tool==="zoom"){const L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom),f=e.shiftKey?1/1.4:1.4;view.zoom=Math.min(24,Math.max(0.15,view.zoom*f));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();return;}
+  if(state.tool==="zoom"){const L=layout(),ox=RL+MG+view.panx,oy=RT+MG+view.pany,wx=(x-ox)/(L.base*view.zoom),wy=(y-oy)/(L.base*view.zoom),f=e.shiftKey?1/1.4:1.4;view.zoom=Math.min(ZOOM_MAX,Math.max(0.15,view.zoom*f));view.panx=x-RL-MG-wx*L.base*view.zoom;view.pany=y-RT-MG-wy*L.base*view.zoom;updZoom();draw();return;}
   /* a multi-selection gets its own transform box; those handles win over the single-object ones */
   if(multiSel()&&state.tool!=="pan"){
     const gh=groupHit(x,y);
@@ -3407,7 +3417,26 @@ function updCalNote(){const el=$("calNote");if(!el)return;const c=getCal();
 
 /* ---- overcut + HPGL ---- */
 function withOvercut(line){if(!$("bladeComp").checked)return line;const oc=(parseFloat($("bladeOff").value||"0")/25.4);if(oc<=0||line.length<3)return line;const a=line[0],last=line[line.length-1];if(Math.hypot(last[0]-a[0],last[1]-a[1])>=0.01)return line;const b=line[1],dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1;return line.concat([[a[0]+dx/Ln*oc,a[1]+dy/Ln*oc]]);}
-function polyToHPGL(line,map){if(line.length<2)return "";const [sx,sy]=map(line[0][0],line[0][1]);return `PU${sx},${sy};PD`+line.slice(1).map(([x,y])=>{const[X,Y]=map(x,y);return X+","+Y;}).join(",")+";";}
+/* Cutters parse HPGL one command at a time into a small fixed buffer. A traced
+   logo can be thousands of points, and emitting them as ONE PD command produces
+   a 17 KB command that overruns that buffer: the cutter stops parsing, stops
+   draining the port, our write blocks, and the job dies at the SAME point every
+   run. Flow control and send pacing cannot fix it -- the limit is per command,
+   not per second. So cap every PD at HPGL_MAX_CMD bytes and continue with a
+   fresh PD. The pen is already down, so consecutive PDs cut one unbroken path:
+   identical geometry, no seams. 200 bytes is under every documented buffer
+   (Roland, Graphtec, USCutter, generic HPGL). */
+const HPGL_MAX_CMD=200;
+function polyToHPGL(line,map){if(line.length<2)return "";
+  const [sx,sy]=map(line[0][0],line[0][1]);
+  let s=`PU${sx},${sy};`,cur="PD",n=0;
+  for(let i=1;i<line.length;i++){
+    const [X,Y]=map(line[i][0],line[i][1]),pt=X+","+Y;
+    if(n>0&&cur.length+1+pt.length+1>HPGL_MAX_CMD){s+=cur+";";cur="PD";n=0;}
+    cur+=(n?",":"")+pt;n++;
+  }
+  if(n)s+=cur+";";
+  return s;}
 /* One mapping for a whole job. Every layer of a colour cut and every panel of
    a tiled cut is built against the SAME reference frame, so the pieces land
    in registration with each other. Size calibration rides on top of
@@ -3856,7 +3885,7 @@ const ACT={
   weld:()=>boolSel("union"), subtract:()=>boolSel("subtract"), intersect:()=>boolSel("intersect"), exclude:()=>boolSel("exclude"),
   breakapart:breakApartSel, combine:combineSel,
   offsetout:()=>offsetSel(1), offsetin:()=>offsetSel(-1),
-  zin:()=>{view.zoom=Math.min(24,view.zoom*1.25);updZoom();draw();}, zout:()=>{view.zoom=Math.max(0.15,view.zoom/1.25);updZoom();draw();}, fit:()=>{resetView();draw();},
+  zin:()=>{view.zoom=Math.min(ZOOM_MAX,view.zoom*1.25);updZoom();draw();}, zout:()=>{view.zoom=Math.max(0.15,view.zoom/1.25);updZoom();draw();}, fit:()=>{resetView();draw();},
   grid:makeGrid, weed:()=>{$("weed").checked=!$("weed").checked;draw();}, reg:()=>{$("regMarks").checked=!$("regMarks").checked;draw();},
   connect:connect, send:async()=>{const lines=allLines();if(!lines.length){alert("Add a design first.");return;}
     /* the machine can't cut vinyl that isn't there: compare what the job
