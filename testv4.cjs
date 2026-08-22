@@ -1,9 +1,13 @@
 const { chromium } = require('playwright');
 (async()=>{
 const b=await chromium.launch(); const p=await b.newPage();
+// Loading a job asks before discarding unsaved work (10.6.0). Playwright
+// dismisses dialogs by default, which silently cancelled the load and made this
+// look like a save/load bug. Say yes, the way an operator would.
+p.on('dialog', d => d.accept());
 const errors=[]; p.on('pageerror',e=>errors.push('PAGEERR: '+e.message));
 await p.goto('file://'+process.cwd()+'/index.html',{waitUntil:'load'}); await p.waitForTimeout(400);
-const res=await p.evaluate(()=>{
+const res=await p.evaluate(async ()=>{
   const out={};
   // embedded fonts present in dropdown
   out.embFontCount=Object.keys(window.EMBEDDED_FONTS||{}).length;
@@ -21,8 +25,9 @@ const res=await p.evaluate(()=>{
   out.assetRoundTrip=state.objects.length===1;
 
   // job library round-trip
-  document.getElementById('jobName').value='UnitJob'; saveJob();
-  state.objects=[]; document.getElementById('jobSelect').value='UnitJob'; loadJob();
+  // saveJob/loadJob became async in 10.6.0 when the library moved to IndexedDB.
+  document.getElementById('jobName').value='UnitJob'; await saveJob();
+  state.objects=[]; document.getElementById('jobSelect').value='UnitJob'; await loadJob();
   out.jobRoundTrip=state.objects.length>=1;
 
   // multi-object HPGL (2 squares)

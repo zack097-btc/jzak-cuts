@@ -484,6 +484,24 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <label>Blade offset / overcut (mm)</label><input type="number" id="bladeOff" value="0.25" step="0.05" min="0">
       <div class="chk"><input type="checkbox" id="bladeComp" checked><label for="bladeComp" style="margin:0">Corner overcut compensation</label></div>
     </div>
+    <div class="grp" id="panelLink">
+      <h3>Cutter Connection</h3>
+      <label>Handshaking <span style="color:#888;font-weight:400">(how the cutter says &ldquo;wait, my buffer is full&rdquo;)</span></label>
+      <select id="flowMode">
+        <option value="auto">Automatic</option>
+        <option value="software">XON/XOFF — works on a 3-wire cable</option>
+        <option value="hardware">Hardware RTS/CTS — needs a full cable</option>
+        <option value="none">None (not recommended)</option>
+      </select>
+      <p class="hint" style="margin:6px 0 0">If a cut <b>stops at the same point every time</b>, the cutter&rsquo;s buffer is filling and nothing is telling the computer to wait. Try <b>XON/XOFF</b> first — it needs no extra wires.</p>
+      <label style="margin-top:10px">Send speed</label>
+      <select id="sendPace">
+        <option value="0">Normal</option>
+        <option value="15">Slow — for a cutter that stalls</option>
+        <option value="45">Very slow — last resort</option>
+      </select>
+      <p class="hint" style="margin:6px 0 0">Slowing the send costs nothing but time and can carry a job through a cutter with a small buffer.</p>
+    </div>
     <div class="grp" id="panelOutput">
       <h3>Output</h3>
       <div class="chk"><input type="checkbox" id="cutOrigin" checked><label for="cutOrigin" style="margin:0">Start cut at the blade (ignore mat position)</label></div>
@@ -527,7 +545,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
    desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
    agree and refuses to build if they drift, because a shop that cannot tell
    which build is on the machine cannot tell whether a bug has been fixed. */
-const JZAK_VERSION="10.6.0";
+const JZAK_VERSION="10.7.0";
 try{
   const _vb=document.getElementById("verBadge");
   if(_vb)_vb.textContent="v"+JZAK_VERSION;
@@ -672,7 +690,7 @@ const CutterIO = DESKTOP ? {
     const stale = state.everConnected;
     if(prefer && ports.some(p=>p.name===prefer)){
       if(stale){ try{ await nativeCall("close_port"); }catch(e){} }
-      await nativeCall("open_port", {name:prefer, baud:9600});
+      state.flowMode = await nativeCall("open_port", {name:prefer, baud:9600, flow:flowPref()});
       return prefer;
     }
     /* one obvious candidate: take it. Otherwise let the shop floor say. */
@@ -681,10 +699,22 @@ const CutterIO = DESKTOP ? {
     const name = list.length===1 ? list[0].name : await pickPort(list);
     if(!name) return null;
     if(stale){ try{ await nativeCall("close_port"); }catch(e){} }
-    await nativeCall("open_port", {name:name, baud:9600});
+    state.flowMode = await nativeCall("open_port", {name:name, baud:9600, flow:flowPref()});
     return name;
   },
-  async write(str){ await nativeCall("write_port", {data:str}); },
+  async write(str,onProgress){
+    /* Sent in pieces from HERE rather than in one call, so the shop can watch
+       the job go out and can SLOW IT DOWN. A cutter whose buffer overruns stops
+       at the same point every time, and pacing is the cheapest thing that fixes
+       it when the cable cannot carry a handshake. */
+    const pace=sendPaceMs(), CH=2048;
+    if(!pace && str.length<=CH){ await nativeCall("write_port",{data:str}); if(onProgress)onProgress(str.length,str.length); return; }
+    for(let i=0;i<str.length;i+=CH){
+      await nativeCall("write_port",{data:str.slice(i,i+CH)});
+      if(onProgress)onProgress(Math.min(i+CH,str.length),str.length);
+      if(pace) await new Promise(r=>setTimeout(r,pace));
+    }
+  },
   async disconnect(){ try{ await nativeCall("close_port"); }catch(e){} }
 } : {
   label:"Web Serial",
@@ -702,28 +732,44 @@ const CutterIO = DESKTOP ? {
       }catch(e){ port=null; }
     }
     if(!port) port = await navigator.serial.requestPort();
-    try{ await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"hardware"}); }
+    /* Web Serial only offers "none" and "hardware" — there is no XON/XOFF in the
+       browser API. A cutter that needs software handshaking therefore has to be
+       driven from the installed app, and the app says so rather than pretending. */
+    const want = flowPref()==="hardware" ? "hardware"
+               : flowPref()==="none" ? "none"
+               : "hardware";                                  /* auto and software both start here */
+    const base = {baudRate:9600,dataBits:8,stopBits:1,parity:"none"};
+    try{ await port.open({...base,flowControl:want}); state.flowMode = want; }
     catch(e){
       if(e&&e.name==="InvalidStateError"){                 /* stale handle: close and retry once */
         try{ await port.close(); }catch(_){}
-        await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"none"});
-      }else{
-        await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:"none",flowControl:"none"});
       }
+      await port.open({...base,flowControl:"none"});
+      state.flowMode = "none";
     }
     state.port = port; state.writer = port.writable.getWriter();
     const i = port.getInfo && port.getInfo();
     return (i&&i.usbVendorId!=null) ? (i.usbVendorId+":"+i.usbProductId) : "serial port";
   },
-  async write(str){
-    const b = new TextEncoder().encode(str);
-    for(let i=0;i<b.length;i+=256) await state.writer.write(b.slice(i,i+256));
+  async write(str,onProgress){
+    const b = new TextEncoder().encode(str), pace=sendPaceMs();
+    for(let i=0;i<b.length;i+=256){
+      await state.writer.write(b.slice(i,i+256));
+      if(onProgress)onProgress(Math.min(i+256,b.length),b.length);
+      if(pace) await new Promise(r=>setTimeout(r,pace));
+    }
   },
   async disconnect(){
     try{ if(state.writer){ state.writer.releaseLock(); } if(state.port) await state.port.close(); }catch(e){}
     state.writer=null; state.port=null;
   }
 };
+/* Which handshaking the operator has asked for. Kept in settings rather than
+   guessed at every connect, because the right answer is a property of the CABLE
+   on the bench and that does not change between jobs. */
+function flowPref(){ const el=$("flowMode"); return (el&&el.value)||"auto"; }
+function sendPaceMs(){ const el=$("sendPace"); return parseInt((el&&el.value)||"0",10)||0; }
+
 function checkSerial(){const w=$("serialWarn");if(!CutterIO.supported()){w.classList.add("show");w.innerHTML="⚠ This browser can't reach the cutter (Web Serial needed). Use <b>Chrome</b> or <b>Edge</b>, or install the desktop app. You can still design here and Download .plt.";$("connectBtn").disabled=true;}}
 /* ---- the link to the cutter ------------------------------------------------
  *
@@ -743,7 +789,11 @@ function setLink(on,where){
   if(on){
     state.everConnected=true; state.portName=where||state.portName;
     dot.classList.add("on");
-    st.textContent="Cutter connected · "+(where||"serial")+" · 9600 baud";
+    /* Name the handshaking out loud. A silent fallback is how a three-wire
+       cable gets mistaken for a flaky cutter for weeks. */
+    const M={hardware:"RTS/CTS",software:"XON/XOFF",none:"NO handshaking"};
+    st.textContent="Cutter connected · "+(where||"serial")+" · 9600 baud · "
+      +(M[state.flowMode]||"handshaking unknown");
     cb.disabled=false; cb.textContent="Disconnect";
     cb.title="Close the port. Your design stays exactly as it is.";
     sb.disabled=false;
@@ -798,15 +848,27 @@ async function writeToCutter(str){
       :"Connect the cutter first (Cut ▸ Connect Cutter).");
     return false;
   }
-  try{ await CutterIO.write(str); return true; }
+  const st=$("statusText"), was=st?st.textContent:"";
+  try{
+    await CutterIO.write(str,(done,total)=>{
+      if(st && total>4096) st.textContent="Sending to cutter… "+Math.round(done/total*100)+"%  ("+done+" of "+total+" bytes)";
+    });
+    if(st) st.textContent=was;
+    return true;
+  }
   catch(err){
+    if(st) st.textContent=was;
     /* A write that fails means the port is gone, whatever the message says. */
     try{ await CutterIO.disconnect(); }catch(e){}
     linkLost(err&&err.message?String(err.message).slice(0,60):"");
     alert("The cutter stopped responding partway through.\n\n"+(err&&err.message||err)+
       "\n\nYour design is still here and nothing has been lost. Switch the cutter on, "+
       "press Reconnect, and send it again.\n\nIf it had already started cutting, reload the "+
-      "vinyl and re-origin before resending.");
+      "vinyl and re-origin before resending.\n\n"+
+      "IF IT STOPS AT THE SAME POINT EVERY TIME, this is not a loose cable — it is the "+
+      "cutter's buffer filling up with nothing telling the computer to wait. In the Cut "+
+      "Settings panel set Handshaking to XON/XOFF, and if that alone does not do it, set "+
+      "Send speed to Slow.");
     return false;
   }
 }
@@ -3902,6 +3964,17 @@ $("testBtn").onclick=()=>ACT.test();$("pltBtn").onclick=()=>ACT.plt();$("svgOutB
 window.addEventListener("resize",()=>{fitCanvas();draw();});
 checkSerial();fitCanvas();populateFonts();refreshAssets();updZoom();updCalNote();setTool("select");
 ndTolIn();traceFilterLabels();popInitButtons();popRestoreOffer();
+/* The cable on the bench does not change between jobs, so neither should the
+   handshaking. Remembered separately from a job snapshot for that reason. */
+(function(){
+  const cfg=lsGet("jzakcuts.link")||{};
+  if(cfg.flow&&$("flowMode"))$("flowMode").value=cfg.flow;
+  if(cfg.pace&&$("sendPace"))$("sendPace").value=cfg.pace;
+  const save=()=>lsSet("jzakcuts.link",{flow:flowPref(),pace:String(sendPaceMs())});
+  if($("flowMode"))$("flowMode").onchange=()=>{save();
+    if(state.connected)toast("Handshaking changed. Press Disconnect then Connect for it to take effect.",6000);};
+  if($("sendPace"))$("sendPace").onchange=save;
+})();
 setLink(false);updDocTitle();
 
 /* Boot order matters here. The default text is built first and the history is

@@ -1,9 +1,13 @@
 const { chromium } = require('playwright');
 (async()=>{
 const b=await chromium.launch(); const p=await b.newPage();
+// Loading a job asks before discarding unsaved work (10.6.0). Playwright
+// dismisses dialogs by default, which silently cancelled the load and made this
+// look like a save/load bug. Say yes, the way an operator would.
+p.on('dialog', d => d.accept());
 const errors=[]; p.on('pageerror',e=>errors.push('PAGEERR: '+e.message));
 await p.goto('file://'+process.cwd()+'/index.html',{waitUntil:'load'}); await p.waitForTimeout(400);
-const res=await p.evaluate(()=>{
+const res=await p.evaluate(async ()=>{
   const out={};
   // reset to empty
   state.objects=[]; state.selId=null;
@@ -36,9 +40,12 @@ const res=await p.evaluate(()=>{
   // --- job save/load round-trip ---
   const beforeCount=state.objects.length;
   document.getElementById('jobName').value='UnitTest';
-  saveJob();
+  // saveJob/loadJob became async in 10.6.0 when the library moved to IndexedDB.
+  // Without these awaits the check runs before the save has happened and this
+  // test fails for a reason that has nothing to do with the app.
+  await saveJob();
   state.objects=[]; state.selId=null; draw();
-  document.getElementById('jobSelect').value='UnitTest'; loadJob();
+  document.getElementById('jobSelect').value='UnitTest'; await loadJob();
   out.jobRoundTrip=state.objects.length===beforeCount;
   // --- overcut still works on a loaded object ---
   document.getElementById('bladeComp').checked=true;
