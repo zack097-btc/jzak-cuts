@@ -28,7 +28,23 @@ struct PortInfo {
 /// The open port, if there is one. A cutter is a single machine, so a single
 /// slot is the honest model.
 #[derive(Default)]
-struct Cutter(Mutex<Option<Box<dyn serialport::SerialPort>>>);
+struct Cutter(
+    Mutex<Option<Box<dyn serialport::SerialPort>>>,
+    /// What the open port was opened WITH, so a hanging write can be retried
+    /// on different handshaking without asking the shop floor to guess.
+    Mutex<Option<PortCfg>>,
+);
+
+/// How the currently open port was opened.
+#[derive(Clone)]
+struct PortCfg {
+    name: String,
+    baud: u32,
+    flow: String,
+    /// True when the app picked the handshaking rather than the operator, which
+    /// is the only case where it is entitled to change its mind.
+    auto: bool,
+}
 
 // The four jobs below are written as ordinary functions taking a plain
 // `&Cutter`, with the Tauri commands as one-line wrappers over them. That is
@@ -71,8 +87,13 @@ fn list_ports() -> Result<Vec<PortInfo>, String> {
 }
 
 #[tauri::command]
-fn open_port(state: tauri::State<Cutter>, name: String, baud: u32) -> Result<(), String> {
-    open_on(&state, &name, baud)
+fn open_port(
+    state: tauri::State<Cutter>,
+    name: String,
+    baud: u32,
+    flow: Option<String>,
+) -> Result<String, String> {
+    open_on(&state, &name, baud, flow.as_deref().unwrap_or("auto"))
 }
 
 #[tauri::command]
@@ -80,55 +101,161 @@ fn write_port(state: tauri::State<Cutter>, data: String) -> Result<(), String> {
     write_on(&state, &data)
 }
 
+/// Which handshaking the open port is actually using. The front end shows this
+/// in the status bar, because a silent fallback is how a cable fault gets
+/// mistaken for a flaky cutter for weeks on end.
+#[tauri::command]
+fn port_mode(state: tauri::State<Cutter>) -> Result<Option<String>, String> {
+    let cfg = state.1.lock().map_err(|_| "serial state is wedged".to_string())?;
+    Ok(cfg.as_ref().map(|c| c.flow.clone()))
+}
+
 #[tauri::command]
 fn close_port(state: tauri::State<Cutter>) -> Result<(), String> {
     close_on(&state)
 }
 
-fn open_on(cutter: &Cutter, name: &str, baud: u32) -> Result<(), String> {
-    // Hardware handshaking is what the cutter expects, and it is what keeps a
-    // long path from overrunning the machine's buffer. Some cheap USB adapters
-    // are wired without the handshake lines, though, and on those a hardware
-    // open leaves every write hanging — so if it will not take, fall back and
-    // let the cutter's own buffer cope.
+/// How long one 256-byte chunk is allowed to take before we call it stuck.
+///
+/// This used to be ten seconds, which is the wrong shape of number: at 9600
+/// baud a 256-byte chunk takes about a quarter of a second, so anything past a
+/// couple of seconds is not slowness, it is a line that is never going to
+/// clear. Ten seconds meant the app froze for ten seconds and THEN reported a
+/// disconnect, which is exactly what a "random split-second dropout" feels like
+/// from the outside.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(3);
+
+fn flow_of(name: &str) -> serialport::FlowControl {
+    match name {
+        "hardware" => serialport::FlowControl::Hardware,
+        "software" => serialport::FlowControl::Software,
+        _ => serialport::FlowControl::None,
+    }
+}
+
+fn open_on(cutter: &Cutter, name: &str, baud: u32, want: &str) -> Result<String, String> {
+    // Handshaking is the whole ball game on a serial cutter.
+    //
+    // Hardware (RTS/CTS) is what a cutter wants: it can tell the computer to
+    // wait while its buffer drains, which is what stops a long path being
+    // overrun. But a lot of cheap USB-to-serial leads are wired with three
+    // conductors and no handshake lines at all. On one of those the port OPENS
+    // perfectly happily and then every write hangs waiting for a CTS that is
+    // never coming.
+    //
+    // The old code tried to guard against that by falling back when the OPEN
+    // failed — but the open does not fail, so the guard never fired. The real
+    // test is whether a write completes, and that now happens in write_on.
     let build = |flow: serialport::FlowControl| {
         serialport::new(name, baud)
             .data_bits(serialport::DataBits::Eight)
             .stop_bits(serialport::StopBits::One)
             .parity(serialport::Parity::None)
             .flow_control(flow)
-            .timeout(Duration::from_secs(10))
+            .timeout(WRITE_TIMEOUT)
             .open()
     };
-    let port = match build(serialport::FlowControl::Hardware) {
-        Ok(p) => p,
-        Err(first) => build(serialport::FlowControl::None)
-            .map_err(|second| format!("{} (also tried without handshaking: {})", first, second))?,
+
+    let (port, used) = if want == "auto" {
+        match build(serialport::FlowControl::Hardware) {
+            Ok(p) => (p, "hardware"),
+            Err(first) => (
+                build(serialport::FlowControl::None).map_err(|second| {
+                    format!("{} (also tried without handshaking: {})", first, second)
+                })?,
+                "none",
+            ),
+        }
+    } else {
+        (build(flow_of(want)).map_err(|e| e.to_string())?, match want {
+            "hardware" => "hardware",
+            "software" => "software",
+            _ => "none",
+        })
     };
 
     let mut slot = cutter.0.lock().map_err(|_| "serial port is wedged".to_string())?;
     *slot = Some(port);
-    Ok(())
+    drop(slot);
+
+    // Remember enough to reopen ourselves if a hardware write turns out to hang.
+    let mut cfg = cutter.1.lock().map_err(|_| "serial state is wedged".to_string())?;
+    *cfg = Some(PortCfg {
+        name: name.to_string(),
+        baud,
+        flow: used.to_string(),
+        auto: want == "auto",
+    });
+    Ok(used.to_string())
 }
 
-fn write_on(cutter: &Cutter, data: &str) -> Result<(), String> {
+/// Push bytes at the currently open port. Returns how many were written.
+fn push(cutter: &Cutter, data: &str) -> Result<usize, String> {
     let mut slot = cutter.0.lock().map_err(|_| "serial port is wedged".to_string())?;
     let port = slot
         .as_mut()
         .ok_or_else(|| "The cutter is not connected.".to_string())?;
 
-    // Sent in small pieces, same as the browser build: a cutter with a modest
-    // buffer would otherwise be handed more than it can hold at once.
+    // Sent in small pieces: a cutter with a modest buffer would otherwise be
+    // handed more than it can hold at once.
+    let mut sent = 0usize;
     for chunk in data.as_bytes().chunks(256) {
         port.write_all(chunk).map_err(|e| e.to_string())?;
+        sent += chunk.len();
     }
     port.flush().map_err(|e| e.to_string())?;
-    Ok(())
+    Ok(sent)
+}
+
+fn write_on(cutter: &Cutter, data: &str) -> Result<(), String> {
+    match push(cutter, data) {
+        Ok(_) => Ok(()),
+        Err(first) => {
+            // THE FALLBACK THAT WAS MISSING.
+            //
+            // A write that times out on hardware handshaking almost always means
+            // the lead has no CTS wire, not that the cutter has gone away. The
+            // old code could only fall back when the OPEN failed, which never
+            // happens on such a lead — so the shop saw a "disconnect" instead of
+            // a cable that simply cannot do RTS/CTS.
+            //
+            // Only worth trying when we chose hardware ourselves, and only once:
+            // if it fails again the cutter really is gone, and saying so is more
+            // use than retrying forever.
+            let retry = {
+                let cfg = cutter.1.lock().map_err(|_| "serial state is wedged".to_string())?;
+                match cfg.as_ref() {
+                    Some(c) if c.auto && c.flow == "hardware" => Some(c.clone()),
+                    _ => None,
+                }
+            };
+            let Some(c) = retry else { return Err(first) };
+            if !looks_stuck(&first) {
+                return Err(first);
+            }
+
+            open_on(cutter, &c.name, c.baud, "none").map_err(|e| {
+                format!("{} (handshaking retry also failed: {})", first, e)
+            })?;
+            push(cutter, data)
+                .map(|_| ())
+                .map_err(|second| format!("{} (and again without handshaking: {})", first, second))
+        }
+    }
+}
+
+/// A stuck line, as opposed to a cutter that has genuinely been unplugged.
+fn looks_stuck(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    m.contains("timed out") || m.contains("timeout") || m.contains("would block")
 }
 
 fn close_on(cutter: &Cutter) -> Result<(), String> {
     let mut slot = cutter.0.lock().map_err(|_| "serial port is wedged".to_string())?;
     *slot = None; // dropping the handle closes it
+    drop(slot);
+    let mut cfg = cutter.1.lock().map_err(|_| "serial state is wedged".to_string())?;
+    *cfg = None;
     Ok(())
 }
 
@@ -160,7 +287,7 @@ mod tests {
     #[test]
     fn a_port_that_is_not_there_reports_both_attempts() {
         let c = Cutter::default();
-        let err = open_on(&c, "/dev/there-is-no-cutter-here", 9600).unwrap_err();
+        let err = open_on(&c, "/dev/there-is-no-cutter-here", 9600, "auto").unwrap_err();
         assert!(
             err.contains("also tried without handshaking"),
             "the fallback attempt was not reported: {err}"
@@ -188,7 +315,7 @@ mod tests {
         drop(slave); // let our own open() take it, exactly as it would a COM port
 
         let c = Cutter::default();
-        open_on(&c, &name, 9600).expect("opening the pty failed");
+        open_on(&c, &name, 9600, "none").expect("opening the pty failed");
 
         let sent = "IN;SP1;PU0,0;PD1016,0;";
         write_on(&c, sent).expect("write failed");
@@ -224,7 +351,7 @@ mod tests {
         assert!(hpgl.len() > 256 * 4, "test payload is too small to matter");
 
         let c = Cutter::default();
-        open_on(&c, &name, 9600).unwrap();
+        open_on(&c, &name, 9600, "none").unwrap();
 
         let want = hpgl.clone();
         let n = want.len();
@@ -250,7 +377,8 @@ fn main() {
             list_ports,
             open_port,
             write_port,
-            close_port
+            close_port,
+            port_mode
         ])
         // The studio window is built here rather than declared in tauri.conf.json
         // for one reason: a window that comes from the config gets no new-window
