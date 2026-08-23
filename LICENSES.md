@@ -37,17 +37,44 @@ full texts are reproduced at the bottom of this file.
 
 ## Bundled fonts
 
-Baked into the page so lettering works on any machine, offline:
+Forty-nine faces are baked into the page so lettering works on any machine,
+offline. Each is subset to Latin — letters, digits, punctuation, accented
+characters and the symbols a sign shop cuts — and the variable ones are pinned
+to a single fixed weight. Subsetting and instancing are modifications in the
+licence's sense; both licences below permit them, and neither requires renaming
+for embedding.
+
+**Under the SIL Open Font Licence 1.1** (45 faces):
 
 Bebas Neue · Anton · Big Shoulders Bold · Big Shoulders Stencil · Oswald Bold ·
 Montserrat Bold · Archivo Black · Roboto Condensed Bold · Poppins Bold ·
-Alfa Slab One · Fjalla One · Teko Bold · Bungee · Pacifico Script · Righteous
+Alfa Slab One · Fjalla One · Teko Bold · Bungee · Pacifico Script · Righteous ·
+Barlow Bold · Barlow Condensed Bold · Inter Bold · Lato Bold · Titillium Web Bold ·
+Saira Condensed Bold · PT Sans Narrow Bold · Fira Sans Bold · Zilla Slab Bold ·
+Staatliches · Black Ops One · Russo One · Passion One Bold · Great Vibes Script ·
+Kaushan Script · Lobster Script · Courgette Script · Saira Stencil One ·
+Work Sans Bold · Open Sans Bold · Rubik Bold · Archivo Narrow Bold · Chivo Bold ·
+Exo 2 Bold · Cabin Bold · Bitter Bold · Dancing Script Bold ·
+Playfair Display Bold · Merriweather Bold · Libre Baskerville Bold
 
-All are released under the **SIL Open Font Licence 1.1**, which allows bundling
-inside and selling of a software product. The OFL's one hard rule is that the
-fonts may not be sold *on their own* as fonts — embedding them in an application
-is expressly permitted. If a font is ever modified and redistributed, it must be
-renamed and stay under the OFL.
+The OFL allows bundling inside and selling of a software product. Its one hard
+rule is that the fonts may not be sold *on their own* as fonts — embedding them
+in an application is expressly permitted. A font that is modified and then
+redistributed **as a font** must be renamed and stay under the OFL; shipping it
+inside this application does not trigger that.
+
+**Under the Apache Licence 2.0** (4 faces):
+
+Roboto Slab Bold · Ultra · Satisfy Script · Yellowtail Script
+
+Apache 2.0 is permissive: it allows commercial use, modification, and
+distribution inside a closed-source product, and asks only that the licence and
+attribution notices be carried along — which is what this file does. It is not
+copyleft and places no obligation on the rest of the application.
+
+Every face above came from the Google Fonts repository at
+<https://github.com/google/fonts>. **Nothing here is GPL, and nothing here
+limits what this software may be sold for.**
 
 Fonts a user uploads themselves are stored only in that user's browser and are
 never redistributed by the app.

@@ -257,7 +257,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <label>Upload a font (.ttf/.otf) — saved</label>
       <input type="file" id="fontFile" accept=".ttf,.otf">
       <div class="btns"><button id="buildTextBtn" class="blue" style="flex:1">Add Lettering →</button></div>
-      <div class="hint" id="fontHint">Your fonts are built in. Uploaded fonts are saved in this browser.</div>
+      <div class="hint" id="fontUse" style="margin-top:4px"></div><div class="hint" id="dotUse" style="margin-top:2px"></div><div class="hint" id="fontHint">Your fonts are built in. Uploaded fonts are saved in this browser.</div>
     </div>
 
     <!-- IMPORT panel -->
@@ -545,7 +545,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
    desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
    agree and refuses to build if they drift, because a shop that cannot tell
    which build is on the machine cannot tell whether a bug has been fixed. */
-const JZAK_VERSION="10.7.1";
+const JZAK_VERSION="10.7.2";
 try{
   const _vb=document.getElementById("verBadge");
   if(_vb)_vb.textContent="v"+JZAK_VERSION;
@@ -1299,7 +1299,7 @@ function objPolylines(o){const sx=objSX(o),sy=objSY(o),{minX,minY,w,h}=o.bbox,de
 function allLines(){const out=[];for(const o of state.objects)for(const l of objPolylines(o))out.push(l);return out;}
 function unionBBox(){const pl=allLines();return pl.length?bboxOf(pl):{minX:0,minY:0,w:0,h:0};}
 function renderObjList(){const el=$("objList");if(!state.objects.length){el.innerHTML='<div class="empty">Nothing yet — Import or Add Text.</div>';return;}el.innerHTML="";state.objects.forEach(o=>{const row=document.createElement("div");row.className="objrow"+(isSel(o.id)?" sel":"");const nm=document.createElement("span");nm.className="nm";nm.textContent=o.name;const pick=ev=>{if(ev.shiftKey||ev.ctrlKey||ev.metaKey)toggleSel(o.id);else selectObj(o.id);};nm.onclick=pick;const b=document.createElement("button");b.textContent="Select";b.onclick=pick;row.appendChild(nm);row.appendChild(b);el.appendChild(row);});}
-function syncInputs(){const o=selected();if(!o){$("widthIn").value="0";$("heightIn").value="0";setRot(0);$("mirror").checked=false;updateDims();updSelUI();return;}if(o.width==null)o.width=objWidth(o);$("heightIn").value=o.height.toFixed(2);$("widthIn").value=objWidth(o).toFixed(2);$("posX").value=o.posX.toFixed(2);$("posY").value=o.posY.toFixed(2);setRot(o.rotation);$("mirror").checked=o.mirror;updateDims();updSelUI();}
+function syncInputs(){const o=selected();if(!o){$("widthIn").value="0";$("heightIn").value="0";setRot(0);$("mirror").checked=false;updateDims();updSelUI();dotCheck();return;}if(o.width==null)o.width=objWidth(o);$("heightIn").value=o.height.toFixed(2);$("widthIn").value=objWidth(o).toFixed(2);$("posX").value=o.posX.toFixed(2);$("posY").value=o.posY.toFixed(2);setRot(o.rotation);$("mirror").checked=o.mirror;updateDims();updSelUI();dotCheck();}
 function normDeg(d){d=d%360;if(d<0)d+=360;return d;}
 function setRot(r){r=normDeg(r||0);document.querySelectorAll("#rotSeg button").forEach(b=>b.classList.toggle("on",Math.abs(parseInt(b.dataset.rot)-r)<0.001));const f=$("rotDeg");if(f&&document.activeElement!==f)f.value=(Math.round(r*10)/10);}
 
@@ -1308,9 +1308,102 @@ const EMBEDDED=window.EMBEDDED_FONTS||{};
 const CDN_FONTS=[];/* all fonts are now embedded & offline — no online dependency */
 let fontCache={};
 function userFonts(){return lsGet("jzakcuts.fonts");}
-function populateFonts(){const sel=$("fontSelect"),cur=sel.value;sel.innerHTML="";const add=(id,l)=>{const o=document.createElement("option");o.value=id;o.textContent=l;sel.appendChild(o);};Object.keys(EMBEDDED).forEach(n=>add("emb:"+n,n));const uf=userFonts();Object.keys(uf).forEach(n=>add("usr:"+n,n+" (yours)"));CDN_FONTS.forEach(f=>add(f.id,f.label));if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
+/* ---- font shelf, grouped, with the one rule that is actually about shape ----
+   33 CFR 173.27 is the only federal rule here that constrains the LETTERFORM:
+   a boat's registration number must be in "plain vertical block characters" at
+   least 3 inches high, contrasting with the background. Upright plain block
+   faces satisfy that; script, serif, stencil and novelty faces do not, so they
+   are grouped apart and marked.
+
+   49 CFR 390.21 (USDOT truck marking) names NO typeface. It requires letters
+   that "contrast sharply" and are "readily legible during daylight hours from
+   50 feet". So there is no such thing as a DOT font, and this app will not
+   pretend otherwise -- what it does instead is check the HEIGHT you are about
+   to cut, which is the part people actually get wrong. See dotCheck(). */
+const FONT_GROUPS=[
+  ["Block — Coast Guard registration OK", [
+    "Bebas Neue","Anton","Oswald Bold","Montserrat Bold","Archivo Black",
+    "Roboto Condensed Bold","Poppins Bold","Teko Bold","Fjalla One",
+    "Big Shoulders Bold","Barlow Bold","Barlow Condensed Bold","Inter Bold",
+    "Lato Bold","Titillium Web Bold","Saira Condensed Bold","PT Sans Narrow Bold",
+    "Fira Sans Bold","Work Sans Bold","Open Sans Bold","Rubik Bold",
+    "Archivo Narrow Bold","Chivo Bold","Exo 2 Bold","Cabin Bold",
+    "Staatliches","Russo One","Passion One Bold"]],
+  ["Slab & heavy display", [
+    "Alfa Slab One","Roboto Slab Bold","Zilla Slab Bold","Bitter Bold",
+    "Bungee","Righteous","Ultra"]],
+  ["Serif", ["Playfair Display Bold","Merriweather Bold","Libre Baskerville Bold"]],
+  ["Script & brush", [
+    "Pacifico Script","Great Vibes Script","Kaushan Script","Lobster Script",
+    "Courgette Script","Dancing Script Bold","Satisfy Script","Yellowtail Script"]],
+  ["Stencil", ["Big Shoulders Stencil","Saira Stencil One","Black Ops One"]],
+];
+/* Only the first group may carry the Coast Guard mark. Anything that is not
+   listed above still appears -- under "Other" -- so a font can never go missing
+   just because this table was not updated. */
+const USCG_GROUP="Block — Coast Guard registration OK";
+function populateFonts(){
+  const sel=$("fontSelect"),cur=sel.value;sel.innerHTML="";
+  const mk=(parent,id,label)=>{const o=document.createElement("option");o.value=id;o.textContent=label;parent.appendChild(o);};
+  const grp=(label)=>{const g=document.createElement("optgroup");g.label=label;sel.appendChild(g);return g;};
+  const listed=new Set();
+  for(const [title,names] of FONT_GROUPS){
+    const have=names.filter(n=>EMBEDDED[n]);
+    if(!have.length)continue;
+    const g=grp(title);
+    have.forEach(n=>{listed.add(n);mk(g,"emb:"+n,n);});
+  }
+  const rest=Object.keys(EMBEDDED).filter(n=>!listed.has(n));
+  if(rest.length){const g=grp("Other");rest.forEach(n=>mk(g,"emb:"+n,n));}
+  const uf=userFonts(),un=Object.keys(uf);
+  if(un.length){const g=grp("Your uploaded fonts — check the shape yourself");un.forEach(n=>mk(g,"usr:"+n,n));}
+  CDN_FONTS.forEach(f=>mk(sel,f.id,f.label));
+  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
+  fontNote();
+}
+function fontIsUSCG(id){
+  if(!id||!id.startsWith("emb:"))return false;
+  const n=id.slice(4),g=FONT_GROUPS.find(x=>x[0]===USCG_GROUP);
+  return !!(g&&g[1].indexOf(n)>=0);
+}
+/* Says what the selected face is good for, in the words of the rule itself. */
+function fontNote(){
+  const el=$("fontUse");if(!el)return;
+  const id=($("fontSelect")||{}).value||"";
+  if(id.startsWith("usr:")){el.innerHTML="Your own font — nothing here has checked its shape.";return;}
+  el.innerHTML = fontIsUSCG(id)
+    ? "<b>Boat numbers:</b> plain vertical block — meets 33 CFR 173.27. Cut it at least <b>3 in</b> tall in a contrasting colour."
+    : "<b>Not for boat registration numbers.</b> 33 CFR 173.27 requires plain vertical block characters — pick one from the first group for the number itself.";
+}
+/* The truck rule is about size and contrast, not typeface, and 50 ft is the
+   test. Legible-at-50-ft works out near 2 in of cap height as a floor, and the
+   states that do set a number set 2 in, so that is what this warns below. */
+function dotCheck(){
+  const el=$("dotUse");if(!el)return;
+  const o=selected();
+  if(!o){el.textContent="";return;}
+  const h=+o.height||0;
+  el.innerHTML = h>=2
+    ? "<b>USDOT marking:</b> "+h.toFixed(2)+" in tall. 49 CFR 390.21 names no font — it wants sharp contrast and legibility at 50 ft. This height is fine."
+    : "<b>USDOT marking:</b> only "+h.toFixed(2)+" in tall. 49 CFR 390.21 wants it legible at 50 ft; 2 in is the usual floor. Consider going taller.";
+}
 async function getFont(id){if(fontCache[id])return fontCache[id];let f;if(id.startsWith("emb:"))f=opentype.parse(b64ToBuf(EMBEDDED[id.slice(4)]));else if(id.startsWith("usr:"))f=opentype.parse(b64ToBuf(userFonts()[id.slice(4)]));else{const url=(CDN_FONTS.find(x=>x.id===id)||{}).url;f=await new Promise((res,rej)=>opentype.load(url,(e,ff)=>e?rej(e):res(ff)));}fontCache[id]=f;return f;}
-async function buildText(){const text=$("textInput").value;if(!text.trim()){alert("Type some text first.");return;}const id=$("fontSelect").value,hint=$("fontHint");let font;try{hint.textContent="Loading font…";font=await getFont(id);}catch(e){hint.innerHTML="⚠ Couldn't load that font (online fonts need internet). Pick a built-in one or upload a .ttf.";return;}hint.textContent="Font ready.";const subs=flattenOpentype(font.getPath(text,0,0,1000,{kerning:true}));if(!subs.length){alert("No cut paths generated.");return;}addObject(subs,text.slice(0,24),3);}
+async function buildText(){const text=$("textInput").value;if(!text.trim()){alert("Type some text first.");return;}const id=$("fontSelect").value,hint=$("fontHint");let font;try{hint.textContent="Loading font…";font=await getFont(id);}catch(e){hint.innerHTML="⚠ Couldn't load that font (online fonts need internet). Pick a built-in one or upload a .ttf.";return;}hint.textContent="Font ready.";const subs=flattenOpentype(font.getPath(text,0,0,1000,{kerning:true}));if(!subs.length){alert("No cut paths generated.");return;}addObject(weldGlyphs(subs),text.slice(0,24),3);}
+/* Script, brush and monoline faces are DRAWN with their letters overlapping --
+   that is what makes them look joined. Sent to a cutter as separate outlines,
+   the blade dutifully cuts every crossing, so the lettering falls apart into
+   slashed pieces. "Marine Repair" in Pacifico arrives as 21 outlines and is
+   really only 11 shapes. Union them at build time, with NonZero winding so the
+   counters in a, e, o and R stay as holes. Block faces are unaffected: nothing
+   overlaps, so the union returns the same rings. If the engine is missing we
+   cut what the font gave us rather than failing to add the lettering at all. */
+function weldGlyphs(subs){
+  if(typeof ClipperLib==="undefined")return subs;
+  try{
+    const u=clipToLines(clipRun(ClipperLib.ClipType.ctUnion,linesToClip(subs),[]));
+    return u.length?u:subs;
+  }catch(e){console.warn("could not weld the lettering, cutting outlines as they came:",e);return subs;}
+}
 function flattenOpentype(path){const N=16,subs=[];let cur=[],start=null,px=0,py=0;for(const c of path.commands){if(c.type==="M"){if(cur.length)subs.push(cur);cur=[[c.x,c.y]];start=[c.x,c.y];px=c.x;py=c.y;}else if(c.type==="L"){cur.push([c.x,c.y]);px=c.x;py=c.y;}else if(c.type==="C"){sampleCubic([px,py],[c.x1,c.y1],[c.x2,c.y2],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Q"){sampleQuad([px,py],[c.x1,c.y1],[c.x,c.y],N).forEach(p=>cur.push(p));px=c.x;py=c.y;}else if(c.type==="Z"){if(start)cur.push([start[0],start[1]]);if(cur.length)subs.push(cur);cur=[];}}if(cur.length)subs.push(cur);return subs;}
 
 /* ---- SVG / DXF / image / studio import ---- */
@@ -3927,6 +4020,7 @@ cv.addEventListener("mouseenter",()=>{if(state.tool==="erase")eraseCursor();});
 
 /* ---- wire inputs ---- */
 $("buildTextBtn").onclick=buildText;
+$("fontSelect").onchange=()=>fontNote();
 $("fontFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{opentype.parse(r.result);const b64=bufToB64(r.result),uf=userFonts(),name=f.name.replace(/\.(ttf|otf)$/i,"");uf[name]=b64;lsSet("jzakcuts.fonts",uf);fontCache={};populateFonts();$("fontSelect").value="usr:"+name;$("fontHint").textContent="Saved font: "+name;}catch(err){alert("Couldn't read that font file.");}};r.readAsArrayBuffer(f);};
 $("vecFile").onchange=e=>{const f=e.target.files[0];if(f)onVecFile(f);};
 /* Every trace control drives the live preview while you drag (cheap, downscaled)

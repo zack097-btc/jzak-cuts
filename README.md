@@ -287,7 +287,7 @@ for f in test*.cjs; do node "$f"; done
 ## Licensing
 
 Every piece of code in the shipped page is either ours or under a permissive
-licence (MIT, Boost, SIL OFL). There is **no GPL code in the build**, so the app
+licence (MIT, Boost, SIL OFL, Apache 2.0). There is **no GPL code in the build**, so the app
 can be sold, licensed, rebranded or bundled with a machine without any
 obligation to publish source. See **[LICENSES.md](LICENSES.md)** for the full
 notice — keep that file with the app.
