@@ -488,19 +488,19 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
       <h3>Cutter Connection</h3>
       <label>Handshaking <span style="color:#888;font-weight:400">(how the cutter says &ldquo;wait, my buffer is full&rdquo;)</span></label>
       <select id="flowMode">
-        <option value="auto">Automatic</option>
+        <option value="auto">Automatic — tries XON/XOFF first</option>
         <option value="software">XON/XOFF — works on a 3-wire cable</option>
         <option value="hardware">Hardware RTS/CTS — needs a full cable</option>
         <option value="none">None (not recommended)</option>
       </select>
-      <p class="hint" style="margin:6px 0 0">If a cut <b>stops at the same point every time</b>, the cutter&rsquo;s buffer is filling and nothing is telling the computer to wait. Try <b>XON/XOFF</b> first — it needs no extra wires. Long traced paths are now split into short commands automatically, which fixes the most common cause.</p>
+      <p class="hint" style="margin:6px 0 0">Leave this on <b>Automatic</b>. It now asks for <b>XON/XOFF</b> first, which is the only handshaking a 3-wire USB lead can actually carry, and only falls back to RTS/CTS and then none if that is refused. If a cut still stops part way through a <b>sheet of two or more</b>, set <b>XON/XOFF</b> outright and drop Send speed to Slow.</p>
       <label style="margin-top:10px">Send speed</label>
       <select id="sendPace">
         <option value="0">Normal</option>
         <option value="15">Slow — for a cutter that stalls</option>
         <option value="45">Very slow — last resort</option>
       </select>
-      <p class="hint" style="margin:6px 0 0">Slowing the send costs nothing but time and can carry a job through a cutter with a small buffer.</p>
+      <p class="hint" style="margin:6px 0 0">The send is already paced to the speed of the wire, so the cutter is never handed more than it can read. This adds extra delay on top for a machine with a very small buffer. It costs nothing but time.</p>
     </div>
     <div class="grp" id="panelOutput">
       <h3>Output</h3>
@@ -545,7 +545,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
    desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
    agree and refuses to build if they drift, because a shop that cannot tell
    which build is on the machine cannot tell whether a bug has been fixed. */
-const JZAK_VERSION="10.7.2";
+const JZAK_VERSION="10.7.3";
 try{
   const _vb=document.getElementById("verBadge");
   if(_vb)_vb.textContent="v"+JZAK_VERSION;
