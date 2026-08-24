@@ -12,7 +12,7 @@
 use serde::Serialize;
 use std::io::Write;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// One serial port as the front end needs to see it.
 #[derive(Serialize)]
@@ -123,7 +123,22 @@ fn close_port(state: tauri::State<Cutter>) -> Result<(), String> {
 /// clear. Ten seconds meant the app froze for ten seconds and THEN reported a
 /// disconnect, which is exactly what a "random split-second dropout" feels like
 /// from the outside.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long one write syscall may block before it comes back empty-handed.
+/// Short on purpose: an empty return is NOT a failure, it is the cutter holding
+/// us off, and we simply try again.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long the cutter may accept NOTHING AT ALL before we call it dead.
+///
+/// This is the number that matters when handshaking is working. A cutter
+/// chewing through a dense patch of a traced logo can hold XOFF for a long
+/// time — it is a motor dragging a blade through vinyl, not a network card —
+/// and every one of those seconds is the machine doing its job properly. Two
+/// minutes of total silence is a cutter that has genuinely stopped; three
+/// seconds is a cutter that is merely busy, and giving up there is what made
+/// 10.7.3 report "failed to write whole buffer" on a sheet it was cutting
+/// perfectly well.
+const STALL_LIMIT: Duration = Duration::from_secs(120);
 
 fn flow_of(name: &str) -> serialport::FlowControl {
     match name {
@@ -235,13 +250,54 @@ fn push(cutter: &Cutter, data: &str) -> Result<usize, String> {
     let per_chunk = Duration::from_micros(
         (CHUNK as u64) * 1_000_000 / ((baud.max(300) as u64) / 10),
     );
+
+    // write_all() IS THE WRONG TOOL HERE, and using it was the 10.7.3 fault.
+    //
+    // With XON/XOFF actually working, a busy cutter tells us to stop. The
+    // operating system then accepts nothing, so write() returns Ok(0) or times
+    // out — and write_all() treats that as fatal and gives up with "failed to
+    // write whole buffer". But the cutter has not failed. It is cutting. Being
+    // told to wait is the handshake DOING ITS JOB, and the only correct
+    // response is to wait and offer the same bytes again.
+    //
+    // So: write in a loop, treat every accepted byte as progress, and only
+    // declare the cutter dead after STALL_LIMIT of no progress whatsoever.
+    let bytes = data.as_bytes();
     let mut sent = 0usize;
-    for chunk in data.as_bytes().chunks(CHUNK) {
-        port.write_all(chunk).map_err(|e| e.to_string())?;
-        port.flush().map_err(|e| e.to_string())?;
-        sent += chunk.len();
-        if sent < data.len() {
-            std::thread::sleep(per_chunk);
+    let mut last_progress = Instant::now();
+    while sent < bytes.len() {
+        let end = (sent + CHUNK).min(bytes.len());
+        let accepted = match port.write(&bytes[sent..end]) {
+            Ok(n) => n,
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                0
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+
+        if accepted > 0 {
+            port.flush().map_err(|e| e.to_string())?;
+            sent += accepted;
+            last_progress = Instant::now();
+            if sent < bytes.len() {
+                std::thread::sleep(per_chunk);
+            }
+        } else {
+            // Held off. Rest briefly so this loop does not spin a core, then
+            // offer the very same bytes again.
+            if last_progress.elapsed() > STALL_LIMIT {
+                return Err(format!(
+                    "The cutter stopped accepting data {} seconds ago, after {} of {} bytes. \
+                     Check it is switched on, not paused, and not out of vinyl.",
+                    STALL_LIMIT.as_secs(),
+                    sent,
+                    bytes.len()
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(20));
         }
     }
     Ok(sent)
@@ -287,7 +343,14 @@ fn write_on(cutter: &Cutter, data: &str) -> Result<(), String> {
 /// A stuck line, as opposed to a cutter that has genuinely been unplugged.
 fn looks_stuck(msg: &str) -> bool {
     let m = msg.to_ascii_lowercase();
-    m.contains("timed out") || m.contains("timeout") || m.contains("would block")
+    m.contains("timed out")
+        || m.contains("timeout")
+        || m.contains("would block")
+        // Rust's own wording when a write returns having moved nothing. Under
+        // working handshaking that means "the cutter told me to wait", which is
+        // a busy machine, not a missing one.
+        || m.contains("failed to write whole buffer")
+        || m.contains("stopped accepting data")
 }
 
 fn close_on(cutter: &Cutter) -> Result<(), String> {
@@ -338,6 +401,42 @@ mod tests {
                 "attempt {expected:?} was not reported: {err}"
             );
         }
+    }
+
+    /// Being told to wait is not a failure. This pins the two numbers that
+    /// decide the difference, because getting them the wrong way round is
+    /// exactly what broke 10.7.3: one write syscall may come back empty after
+    /// a couple of seconds, but the cutter is only declared dead after two
+    /// solid minutes of accepting nothing. A cutter dragging a blade through a
+    /// dense patch can hold XOFF far longer than a single syscall timeout.
+    #[test]
+    fn a_busy_cutter_is_given_far_longer_than_one_syscall() {
+        assert!(
+            STALL_LIMIT >= WRITE_TIMEOUT * 30,
+            "a held-off cutter must get much longer than one write timeout: \
+             timeout {WRITE_TIMEOUT:?}, stall limit {STALL_LIMIT:?}"
+        );
+        assert!(
+            STALL_LIMIT >= std::time::Duration::from_secs(60),
+            "under a minute is not enough for a cutter working through a dense area"
+        );
+    }
+
+    /// A hold-off must read as stuck-but-alive, never as a vanished cutter.
+    #[test]
+    fn a_held_off_write_reads_as_busy_not_broken() {
+        for msg in [
+            "failed to write whole buffer",
+            "Operation timed out",
+            "the write would block",
+            "The cutter stopped accepting data 120 seconds ago",
+        ] {
+            assert!(looks_stuck(msg), "should read as a busy line: {msg}");
+        }
+        assert!(
+            !looks_stuck("No such device"),
+            "an unplugged cutter must not be mistaken for a busy one"
+        );
     }
 
     /// The pacing maths is the whole fix for a sheet of two or more designs, so
