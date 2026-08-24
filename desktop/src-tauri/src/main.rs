@@ -156,15 +156,31 @@ fn open_on(cutter: &Cutter, name: &str, baud: u32, want: &str) -> Result<String,
             .open()
     };
 
+    // AUTOMATIC MEANS XON/XOFF FIRST, and that is a correction.
+    //
+    // It used to try RTS/CTS first and fall back to NO handshaking if the open
+    // failed. But on a three-wire USB lead the hardware open SUCCEEDS — the
+    // driver has no idea the wires are absent — so the shop was left with
+    // handshaking the cable cannot physically carry, which behaves exactly like
+    // none at all. One design fitted the cutter's buffer and finished; two
+    // overran it and died at a different place each run.
+    //
+    // XON/XOFF travels on the same two wires as the data, so it works on every
+    // lead including a three-wire one. That makes it the right default for a
+    // cutter on a USB serial adapter, which is what a sign shop actually owns.
     let (port, used) = if want == "auto" {
-        match build(serialport::FlowControl::Hardware) {
-            Ok(p) => (p, "hardware"),
-            Err(first) => (
-                build(serialport::FlowControl::None).map_err(|second| {
-                    format!("{} (also tried without handshaking: {})", first, second)
-                })?,
-                "none",
-            ),
+        match build(serialport::FlowControl::Software) {
+            Ok(p) => (p, "software"),
+            Err(first) => match build(serialport::FlowControl::Hardware) {
+                Ok(p) => (p, "hardware"),
+                Err(second) => (
+                    build(serialport::FlowControl::None).map_err(|third| {
+                        format!("{} (then RTS/CTS: {}) (then no handshaking: {})",
+                                first, second, third)
+                    })?,
+                    "none",
+                ),
+            },
         }
     } else {
         (build(flow_of(want)).map_err(|e| e.to_string())?, match want {
@@ -191,19 +207,43 @@ fn open_on(cutter: &Cutter, name: &str, baud: u32, want: &str) -> Result<String,
 
 /// Push bytes at the currently open port. Returns how many were written.
 fn push(cutter: &Cutter, data: &str) -> Result<usize, String> {
+    let baud = {
+        let cfg = cutter.1.lock().map_err(|_| "serial state is wedged".to_string())?;
+        cfg.as_ref().map(|c| c.baud).unwrap_or(9600)
+    };
     let mut slot = cutter.0.lock().map_err(|_| "serial port is wedged".to_string())?;
     let port = slot
         .as_mut()
         .ok_or_else(|| "The cutter is not connected.".to_string())?;
 
-    // Sent in small pieces: a cutter with a modest buffer would otherwise be
-    // handed more than it can hold at once.
+    // PACED TO THE WIRE, not dumped at it.
+    //
+    // write_all() returns as soon as the operating system and the USB adapter
+    // have ACCEPTED the bytes — not when the cutter has read them. Those
+    // buffers hold tens of kilobytes, so the old loop handed a whole 46 KB job
+    // over in a fraction of a second and then reported success. The cutter was
+    // still chewing on the first inch. Its own small buffer overflowed
+    // somewhere in the middle, and because that depended on timing it died at a
+    // DIFFERENT place every run.
+    //
+    // So each chunk is flushed and then given the time it actually takes to
+    // travel down the line: 8-N-1 is ten bits per byte, so at `baud` the wire
+    // carries baud/10 bytes a second. Pacing to that keeps the operating
+    // system's buffer nearly empty, which is what lets an XOFF from the cutter
+    // take effect within a few bytes instead of forty kilobytes too late.
+    const CHUNK: usize = 256;
+    let per_chunk = Duration::from_micros(
+        (CHUNK as u64) * 1_000_000 / ((baud.max(300) as u64) / 10),
+    );
     let mut sent = 0usize;
-    for chunk in data.as_bytes().chunks(256) {
+    for chunk in data.as_bytes().chunks(CHUNK) {
         port.write_all(chunk).map_err(|e| e.to_string())?;
+        port.flush().map_err(|e| e.to_string())?;
         sent += chunk.len();
+        if sent < data.len() {
+            std::thread::sleep(per_chunk);
+        }
     }
-    port.flush().map_err(|e| e.to_string())?;
     Ok(sent)
 }
 
@@ -284,14 +324,39 @@ mod tests {
         );
     }
 
+    /// Automatic tries XON/XOFF first, because that is the only handshaking a
+    /// three-wire USB lead can actually carry, then RTS/CTS, then none. When a
+    /// port is simply absent the message has to name all three so the shop can
+    /// see it was not one unlucky attempt.
     #[test]
-    fn a_port_that_is_not_there_reports_both_attempts() {
+    fn a_port_that_is_not_there_reports_every_attempt() {
         let c = Cutter::default();
         let err = open_on(&c, "/dev/there-is-no-cutter-here", 9600, "auto").unwrap_err();
-        assert!(
-            err.contains("also tried without handshaking"),
-            "the fallback attempt was not reported: {err}"
-        );
+        for expected in ["then RTS/CTS", "then no handshaking"] {
+            assert!(
+                err.contains(expected),
+                "attempt {expected:?} was not reported: {err}"
+            );
+        }
+    }
+
+    /// The pacing maths is the whole fix for a sheet of two or more designs, so
+    /// it is pinned here. 8-N-1 is ten bits a byte, so 9600 baud carries 960
+    /// bytes a second and a 256-byte chunk owns the line for about 267 ms.
+    /// Getting this wrong in either direction is bad: too fast and the cutter
+    /// overruns again, too slow and a job that took a minute takes ten.
+    #[test]
+    fn a_chunk_is_paced_to_how_long_the_wire_needs() {
+        for (baud, expect_ms) in [(9600u32, 266u128), (19200, 133), (38400, 66)] {
+            let per_chunk = std::time::Duration::from_micros(
+                256u64 * 1_000_000 / ((baud.max(300) as u64) / 10),
+            );
+            let got = per_chunk.as_millis();
+            assert!(
+                got.abs_diff(expect_ms) <= 1,
+                "at {baud} baud a 256-byte chunk should take about {expect_ms} ms, got {got}"
+            );
+        }
     }
 
     #[test]
