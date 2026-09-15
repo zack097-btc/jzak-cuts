@@ -11,7 +11,7 @@
 
 use serde::Serialize;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -45,6 +45,8 @@ struct Cutter(
 struct Progress {
     sent: AtomicUsize,
     total: AtomicUsize,
+    /// Set by Stop. Cleared at the start of every send.
+    abort: AtomicBool,
 }
 
 /// How the currently open port was opened.
@@ -103,9 +105,25 @@ fn list_ports() -> Result<Vec<PortInfo>, String> {
     Ok(out)
 }
 
-#[tauri::command]
+/// OFF THE UI THREAD. All three of these block.
+///
+/// Tauri runs a synchronous command on the MAIN thread unless it is told
+/// otherwise, and the main thread is the one that repaints the window. Up to
+/// 10.7.5 that was survivable by accident: a send was metered to the cable and
+/// a 2 KB slice was over in about two seconds, so nobody noticed the window was
+/// wedged for it.
+///
+/// 10.7.6 made the send WAIT FOR THE CUTTER, which is the entire point of it —
+/// and a wait of thirty seconds on the main thread is a window that has not
+/// answered Windows in thirty seconds, which Windows greys out and labels "not
+/// responding". The cut was going out perfectly well underneath; the app simply
+/// had no thread left to say so.
+///
+/// `(async)` hands the work to the runtime instead. The window keeps painting,
+/// the progress read below keeps answering, and Stop still works.
+#[tauri::command(async)]
 fn open_port(
-    state: tauri::State<Cutter>,
+    state: tauri::State<'_, Cutter>,
     name: String,
     baud: u32,
     flow: Option<String>,
@@ -113,9 +131,22 @@ fn open_port(
     open_on(&state, &name, baud, flow.as_deref().unwrap_or("auto"))
 }
 
-#[tauri::command]
-fn write_port(state: tauri::State<Cutter>, data: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn write_port(state: tauri::State<'_, Cutter>, data: String) -> Result<(), String> {
     write_on(&state, &data)
+}
+
+/// Abandon the job that is going out.
+///
+/// A cutter is a machine with a blade in it and the operator is standing next
+/// to it. If something is wrong — wrong material loaded, artwork wrong, blade
+/// dragging — the answer must never be "wait two minutes for the buffer to
+/// drain" or "kill the app and hope". This sets a flag the send loops check
+/// between blocks; they stop where they are and say how far they got.
+#[tauri::command]
+fn stop_send(state: tauri::State<'_, Cutter>) -> Result<(), String> {
+    state.2.abort.store(true, Ordering::Relaxed);
+    Ok(())
 }
 
 /// Which handshaking the open port is actually using. The front end shows this
@@ -150,8 +181,8 @@ fn port_progress(state: tauri::State<Cutter>) -> Result<(usize, usize), String> 
     ))
 }
 
-#[tauri::command]
-fn close_port(state: tauri::State<Cutter>) -> Result<(), String> {
+#[tauri::command(async)]
+fn close_port(state: tauri::State<'_, Cutter>) -> Result<(), String> {
     close_on(&state)
 }
 
@@ -293,6 +324,13 @@ fn stall_msg(sent: usize, total: usize) -> String {
 /// cutter is broken". Caught by push(), which drops to a weaker pace and keeps
 /// cutting rather than abandoning a half-finished sheet.
 const QUIET: &str = "QUIET";
+
+/// What a send says when the operator pressed Stop. Not a fault — it is the
+/// machine doing what it was told — so it is worded as an outcome, not an error.
+fn stopped_msg(sent: usize, total: usize) -> String {
+    format!("Stopped by you after {} of {} bytes. The cutter may still finish what \
+             is already in its buffer.", sent, total)
+}
 
 fn drain_input(port: &mut Box<dyn serialport::SerialPort>) {
     let _ = port.clear(serialport::ClearBuffer::Input);
@@ -476,10 +514,14 @@ fn send_credit(
     sent: &mut usize,
     oa: bool,
     mark: &AtomicUsize,
+    abort: &AtomicBool,
 ) -> Result<(), String> {
     let mut last = Instant::now();
     let mut since_check = 0usize;
     while *sent < bytes.len() {
+        if abort.load(Ordering::Relaxed) {
+            return Err(stopped_msg(*sent, bytes.len()));
+        }
         let free = match ask_free(port, ASK_WAIT) {
             Some(f) => f,
             None => return Err(format!("{}:{}", QUIET, sent)),
@@ -544,9 +586,13 @@ fn send_barrier(
     bytes: &[u8],
     sent: &mut usize,
     mark: &AtomicUsize,
+    abort: &AtomicBool,
 ) -> Result<(), String> {
     let mut outstanding = 0usize;
     while *sent < bytes.len() {
+        if abort.load(Ordering::Relaxed) {
+            return Err(stopped_msg(*sent, bytes.len()));
+        }
         let end = block_end(bytes, *sent, BLOCK, BLOCK_CEILING);
         write_exact(port, &bytes[*sent..end], *sent, bytes.len())?;
         *sent = end;
@@ -585,11 +631,15 @@ fn send_wire(
     sent: &mut usize,
     baud: u32,
     mark: &AtomicUsize,
+    abort: &AtomicBool,
 ) -> Result<(), String> {
     const CHUNK: usize = 256;
     let per_chunk =
         Duration::from_micros((CHUNK as u64) * 1_000_000 / ((baud.max(300) as u64) / 10));
     while *sent < bytes.len() {
+        if abort.load(Ordering::Relaxed) {
+            return Err(stopped_msg(*sent, bytes.len()));
+        }
         let end = (*sent + CHUNK).min(bytes.len());
         write_exact(port, &bytes[*sent..end], *sent, bytes.len())?;
         *sent = end;
@@ -709,6 +759,7 @@ fn push(cutter: &Cutter, data: &str) -> Result<usize, String> {
     let bytes = data.as_bytes();
     cutter.2.total.store(bytes.len(), Ordering::Relaxed);
     cutter.2.sent.store(0, Ordering::Relaxed);
+    cutter.2.abort.store(false, Ordering::Relaxed);
 
     let mut sent = 0usize;
     let mut pace = start_pace;
@@ -721,9 +772,15 @@ fn push(cutter: &Cutter, data: &str) -> Result<usize, String> {
             .ok_or_else(|| "The cutter is not connected.".to_string())?;
         loop {
             let r = match pace {
-                Pace::Credit => send_credit(port, bytes, &mut sent, oa, &cutter.2.sent),
-                Pace::Barrier => send_barrier(port, bytes, &mut sent, &cutter.2.sent),
-                Pace::Wire => send_wire(port, bytes, &mut sent, baud, &cutter.2.sent),
+                Pace::Credit => {
+                    send_credit(port, bytes, &mut sent, oa, &cutter.2.sent, &cutter.2.abort)
+                }
+                Pace::Barrier => {
+                    send_barrier(port, bytes, &mut sent, &cutter.2.sent, &cutter.2.abort)
+                }
+                Pace::Wire => {
+                    send_wire(port, bytes, &mut sent, baud, &cutter.2.sent, &cutter.2.abort)
+                }
             };
             match r {
                 Ok(()) => break Ok(sent),
@@ -1384,6 +1441,77 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn stop_gets_the_blade_to_stop() {
+        use serialport::{SerialPort, TTYPort};
+        use std::sync::atomic::Ordering as O;
+
+        // An operator standing at the machine with the wrong vinyl loaded needs
+        // the job to stop NOW, not when the buffer drains. Prove Stop is honoured
+        // part way through a sheet, that it says how far it got, and that it does
+        // not get mistaken for a fault and retried on weaker pacing.
+        let _bench = one_at_a_time();
+        patience(6000);
+        let (master, slave) = TTYPort::pair().expect("no pty pair");
+        let name = slave.name().unwrap();
+        drop(slave);
+        // A deliberately slow cutter, so the send is still going when Stop lands.
+        let _fake = run_fake_cutter(master, 512, 120, true, true);
+
+        let c = std::sync::Arc::new(Cutter::default());
+        open_on(&c, &name, 9600, "none").expect("open failed");
+
+        let stopper = {
+            let c = c.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(1200));
+                c.2.abort.store(true, O::Relaxed);
+            })
+        };
+
+        let began = Instant::now();
+        let err = write_on(&c, &full_sheet()).expect_err("a stopped job reported success");
+        let took = began.elapsed();
+        stopper.join().unwrap();
+
+        assert!(
+            err.contains("Stopped by you"),
+            "Stop was reported as something else: {}",
+            err
+        );
+        assert!(
+            took < Duration::from_secs(12),
+            "Stop took {:?} to take effect - an operator will have pulled the plug by then",
+            took
+        );
+        let sent = c.2.sent.load(O::Relaxed);
+        let total = c.2.total.load(O::Relaxed);
+        assert!(
+            sent > 0 && sent < total,
+            "Stop landed at {} of {} - it did not interrupt anything",
+            sent,
+            total
+        );
+
+        // A second send must START CLEAN. If the flag were left set, every job
+        // after a single Stop would die instantly and the shop would think the
+        // app had broken itself — so prove the next one actually goes out.
+        //
+        // (The first version of this check was `assert!(x || true)`, which
+        // cannot fail and tested nothing. Left here as a note to self.)
+        let second = write_on(&c, "IN;SP1;PU0,0;PD200,0;PU0,0;");
+        assert!(
+            second.is_ok(),
+            "the send after a Stop was refused: {:?}",
+            second
+        );
+        assert!(
+            !c.2.abort.load(O::Relaxed),
+            "the Stop flag survived into the next job"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_cutter_that_goes_quiet_mid_job_still_gets_the_rest() {
         let _bench = one_at_a_time();
         patience(700);
@@ -1486,6 +1614,7 @@ fn main() {
             open_port,
             write_port,
             close_port,
+            stop_send,
             port_mode,
             port_pace,
             port_progress
