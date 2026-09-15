@@ -1,5 +1,18 @@
 # JZAK Cuts — what changed, version by version
 
+## 10.7.8 — 15 September 2026
+
+**10.7.7 shipped broken and must not be installed.** Its installer carries the
+new STOP button and progress readout, and the OLD blocking commands underneath,
+so it still greys the window out. GitHub's web upload form silently dropped the
+one commit that mattered; the other two landed, the release built, and it looked
+complete. The check that should have caught it was a browser search of the
+published file, which matched a comment and reported the code present. It was
+not: none of the 139 changed lines were there.
+
+The check now is a fetch and a tree comparison against the working copy, which
+either matches or does not. 10.7.8 is 10.7.7 with the Rust actually in it.
+
 ## 10.7.7 — 15 September 2026
 
 ### "Not responding"
