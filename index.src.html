@@ -493,7 +493,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
         <option value="hardware">Hardware RTS/CTS — needs a full cable</option>
         <option value="none">None (not recommended)</option>
       </select>
-      <p class="hint" style="margin:6px 0 0">Leave this on <b>Automatic</b>. It now asks for <b>XON/XOFF</b> first, which is the only handshaking a 3-wire USB lead can actually carry, and only falls back to RTS/CTS and then none if that is refused. If a cut still stops part way through a <b>sheet of two or more</b>, set <b>XON/XOFF</b> outright and drop Send speed to Slow.</p>
+      <p class="hint" style="margin:6px 0 0">Leave this on <b>Automatic</b>. It asks for <b>XON/XOFF</b> first, which is the only handshaking a 3-wire USB lead can actually carry, and falls back to RTS/CTS and then none if that is refused.<br><br><b>10.7.6 no longer depends on any of that.</b> The installed app now asks the cutter itself how much room is left in its buffer and never sends more than it says it has — so a full sheet cannot overrun it, whatever the cable is wired for. The status bar names which conversation your machine agreed to. If it says <b>cutter does not answer</b>, yours will not talk back: drop Send speed to Slow and keep sheets shorter, because nothing can be guaranteed on a machine that will not say when it is full.</p>
       <label style="margin-top:10px">Send speed</label>
       <select id="sendPace">
         <option value="0">Normal</option>
@@ -545,7 +545,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
    desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
    agree and refuses to build if they drift, because a shop that cannot tell
    which build is on the machine cannot tell whether a bug has been fixed. */
-const JZAK_VERSION="10.7.5";
+const JZAK_VERSION="10.7.6";
 try{
   const _vb=document.getElementById("verBadge");
   if(_vb)_vb.textContent="v"+JZAK_VERSION;
@@ -700,6 +700,9 @@ const CutterIO = DESKTOP ? {
     if(!name) return null;
     if(stale){ try{ await nativeCall("close_port"); }catch(e){} }
     state.flowMode = await nativeCall("open_port", {name:name, baud:9600, flow:flowPref()});
+    /* How the shell decided to meter this machine — see setLink. Best effort:
+       an older shell has no such command and simply leaves it blank. */
+    try{ state.pace = await nativeCall("port_pace"); }catch(e){ state.pace = null; }
     return name;
   },
   async write(str,onProgress){
@@ -707,7 +710,13 @@ const CutterIO = DESKTOP ? {
        the job go out and can SLOW IT DOWN. A cutter whose buffer overruns stops
        at the same point every time, and pacing is the cheapest thing that fixes
        it when the cable cannot carry a handshake. */
-    const pace=sendPaceMs(), CH=2048;
+    /* 10.7.6: the installed app now meters the job against the CUTTER rather
+       than against the cable, asking the machine how much room it has and never
+       sending more than it says. That makes the old 2 KB slices pointless — and
+       slightly harmful, since every slice boundary is a place the conversation
+       has to be picked up again. Hand over bigger pieces and let the shell do
+       the metering it is now equipped to do. */
+    const pace=sendPaceMs(), CH=16384;
     if(!pace && str.length<=CH){ await nativeCall("write_port",{data:str}); if(onProgress)onProgress(str.length,str.length); return; }
     for(let i=0;i<str.length;i+=CH){
       await nativeCall("write_port",{data:str.slice(i,i+CH)});
@@ -792,8 +801,17 @@ function setLink(on,where){
     /* Name the handshaking out loud. A silent fallback is how a three-wire
        cable gets mistaken for a flaky cutter for weeks. */
     const M={hardware:"RTS/CTS",software:"XON/XOFF",none:"NO handshaking"};
+    /* Naming the metering out loud matters as much as naming the handshaking.
+       "credit" means the cutter tells us how much room it has and cannot be
+       overrun. "barrier" means it confirms each block it has cut. "wire" means
+       it will not talk back at all, and a full sheet is at the mercy of its
+       buffer — which is exactly the fault that cost whole afternoons. */
+    const P={credit:"cutter reports its buffer — cannot overrun",
+             barrier:"cutter confirms each block",
+             wire:"⚠ cutter does not answer — long jobs at risk"};
     st.textContent="Cutter connected · "+(where||"serial")+" · 9600 baud · "
-      +(M[state.flowMode]||"handshaking unknown");
+      +(M[state.flowMode]||"handshaking unknown")
+      +(state.pace?" · "+(P[state.pace]||state.pace):"");
     cb.disabled=false; cb.textContent="Disconnect";
     cb.title="Close the port. Your design stays exactly as it is.";
     sb.disabled=false;

@@ -1,5 +1,86 @@
 # JZAK Cuts — what changed, version by version
 
+## 10.7.6 — 15 September 2026
+
+### The stall, properly this time
+
+A sheet filled with two or more designs stopped part way down, at the same spot
+every run. Three releases went at this and none of them fixed it, so here is the
+whole diagnosis written down.
+
+10.7.1 found oversized `PD` commands. Real fault, fixed. 10.7.3 found that
+automatic handshaking never actually tried XON/XOFF, because the RTS/CTS open
+SUCCEEDS on a three-wire lead and the guard only fired when the open failed.
+Real fault, fixed. 10.7.4 found `write_all` treating a busy cutter as a dead one.
+Real fault, fixed. Three separate faults behind one symptom, each masking the
+next — and one left over.
+
+The one left over is this. Every version up to 10.7.5 metered the job to the
+WIRE: 9600 baud carries 960 bytes a second, so a chunk was flushed and then
+given the time those bytes take to travel. That keeps the PC's own buffers
+empty, which is worth doing, and it is the wrong quantity entirely. **The cutter
+does not consume commands at wire speed, it consumes them at blade speed.** A
+`PD` moves a motor, drags a knife through vinyl and waits for the swivel to
+follow; ten bytes of command can be a tenth of a second of work. On a full sheet
+the machine falls further behind with every shape, its own buffer fills at a
+perfectly repeatable byte count, and everything past that count goes on the
+floor. A fixed byte count is exactly why it died at the same spot, and exactly
+why small jobs were fine — they never reached the count.
+
+XON/XOFF is supposed to prevent this and only works if the cutter sends the XOFF
+byte back. Plenty do not, or send it far too late.
+
+So 10.7.6 stops relying on that and asks the machine instead. At connect it puts
+two questions down the wire and feeds the cutter according to what it gets back:
+
+- **Credit.** The cutter answers `ESC.B` with the free space in its own buffer.
+  Ask, send that much less a safety margin, ask again. It cannot be overrun,
+  because we never once send more than it has just said it can hold. Every
+  4 KB it also has to answer a question it cannot answer until the work is
+  really done, in case its arithmetic flatters it.
+- **Barrier.** No `ESC.B`, but it answers `OA` with the pen position. `OA` is an
+  ordinary buffered instruction, so the answer cannot come back until everything
+  queued ahead of it has been cut — which makes the reply a true acknowledgement.
+  Blocks are sized so that two of them fit inside the smallest buffer worth
+  assuming, and two are kept in flight so the blade never runs dry waiting.
+- **Wire.** The cutter says nothing at all. This is what every previous version
+  did for everyone, and the status bar now says so in as many words.
+
+Both questions travel on the same two wires as the data, so this works down a
+three-wire USB lead — which is the whole reason it is the right answer here.
+
+Where a block is allowed to end matters too: it is cut at a `PU` wherever
+possible, so any pause waiting for the cutter happens with the blade off the
+vinyl.
+
+If the cutter goes quiet half way down a sheet, the job is NOT abandoned. It
+drops to a weaker way of feeding and pushes the rest out, because a sheet
+abandoned at sixty percent is the one outcome that definitely wastes the vinyl.
+
+### Saying which one you got
+
+The status bar now names the metering next to the handshaking: *cutter reports
+its buffer — cannot overrun*, *cutter confirms each block*, or a flagged
+*⚠ cutter does not answer — long jobs at risk*. A silent fallback is how a
+machine that cannot finish a full sheet gets mistaken for a flaky cable for four
+releases running.
+
+### The tests that were missing
+
+A fake cutter now stands in for the machine on the bench: a small buffer that
+drains at blade speed, answering `ESC.B` and `OA` the way real hardware does, and
+failing the run the moment its buffer is overrun.
+
+The first version of it drained at 4000 bytes a second — faster than 9600 baud
+can even deliver — so it could never fall behind, never overflow, and every
+proof built on it proved nothing. That was caught by a deliberate falsification
+test which drives the same sheet at the same cutter using 10.7.5's wire pacing
+and FAILS if the buffer survives. If that test ever goes quiet, the fake has
+stopped modelling a real cutter and the rest of the suite is worthless.
+
+It also caught a live margin bug: two 512-byte blocks fill a 1 KB cutter to the
+very last byte. Blocks are 256 now.
+
 ## 10.6.0 — 3 August 2026
 
 The release that came out of cutting three real jobs back to back: the Donkey

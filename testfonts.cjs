@@ -21,5 +21,17 @@ console.log('built ok:',res.built.length,'-',res.built.join(', '));
 console.log('failed:',JSON.stringify(res.failed));
 console.log('cdn options remaining:',JSON.stringify(res.cdnOptions));
 console.log('errors:',JSON.stringify(errs.slice(0,3)));
-console.log((res.count===15 && res.built.length===15 && res.failed.length===0 && res.cdnOptions.length===0 && errs.length===0)?'ALL FONTS PASS':'CHECK FAILED');
+/* This used to demand EXACTLY fifteen faces, which was true the day it was
+   written and wrong from the first font pack onwards — it has been failing on
+   a correct product ever since. The real requirements are: the shelf is not
+   empty, every face on it actually builds, none fails, and nothing is still
+   being fetched from a CDN (a font the shop cannot cut offline is not a font
+   the shop has). testfonts2.cjs checks the shelf's CONTENTS; this checks that
+   every one of them works. */
+const ok = res.count >= 15
+        && res.built.length === res.count
+        && res.failed.length === 0
+        && res.cdnOptions.length === 0
+        && errs.length === 0;
+console.log(ok ? 'ALL FONTS PASS' : 'CHECK FAILED');
 await b.close();})();

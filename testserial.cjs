@@ -76,8 +76,14 @@ const { chromium } = require('playwright');
     note(/COM4/.test(r.after.status), 'status line does not name the port: ' + r.after.status);
     note(r.after.dotOn && r.after.sendEnabled, 'connected UI did not light up');
     const names = r.calls.map(c => c[0]);
-    note(JSON.stringify(names) === JSON.stringify(['list_ports', 'open_port', 'write_port']),
-         'native call order wrong: ' + names.join(','));
+    /* 10.7.6 asks the shell how it decided to meter this cutter, straight after
+       opening the port, so the status bar can say. Pin the ORDER of the calls
+       that matter rather than the exact list, or every future addition to the
+       connect handshake fails here for no product reason. */
+    note(names.indexOf('list_ports') === 0, 'ports were not listed first: ' + names.join(','));
+    note(names.indexOf('open_port') === 1, 'the port was not opened second: ' + names.join(','));
+    note(names.indexOf('port_pace') === 2, 'the metering was not read at connect: ' + names.join(','));
+    note(names[names.length - 1] === 'write_port', 'the job did not go last: ' + names.join(','));
     const open = r.calls.find(c => c[0] === 'open_port');
     note(open && open[1].name === 'COM4' && open[1].baud === 9600,
          'open_port args wrong: ' + JSON.stringify(open && open[1]));
