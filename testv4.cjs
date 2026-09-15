@@ -11,7 +11,9 @@ const res=await p.evaluate(async ()=>{
   const out={};
   // embedded fonts present in dropdown
   out.embFontCount=Object.keys(window.EMBEDDED_FONTS||{}).length;
-  out.fontOptions=[...document.getElementById('fontSelect').options].map(o=>o.value).slice(0,6);
+  /* Every option, not the first handful: the shelf is grouped now and the group
+     order is free to change, so a slice here would fail for no product reason. */
+  out.fontOptions=[...document.getElementById('fontSelect').options].map(o=>o.value);
   // font b64 decodes to a TTF (starts with 0x00 0x01 0x00 0x00 or 'OTTO'/'true')
   const buf=b64ToBuf(window.EMBEDDED_FONTS['Bebas Neue']); const dv=new Uint8Array(buf).slice(0,4);
   out.ttfMagic=Array.from(dv);

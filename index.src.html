@@ -545,7 +545,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
    desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
    agree and refuses to build if they drift, because a shop that cannot tell
    which build is on the machine cannot tell whether a bug has been fixed. */
-const JZAK_VERSION="10.7.4";
+const JZAK_VERSION="10.7.5";
 try{
   const _vb=document.getElementById("verBadge");
   if(_vb)_vb.textContent="v"+JZAK_VERSION;
@@ -1321,6 +1321,16 @@ function userFonts(){return lsGet("jzakcuts.fonts");}
    pretend otherwise -- what it does instead is check the HEIGHT you are about
    to cut, which is the part people actually get wrong. See dotCheck(). */
 const FONT_GROUPS=[
+  /* The seven faces on the JZAC boat-lettering proof sheet, in the order the
+     customer sees them. Six of the seven on that sheet — Helvetica, Franklin
+     Gothic, DIN, Futura, Eurostile and Impact — are PROPRIETARY faces owned by
+     Monotype and Linotype. They may not be embedded in software that is sold,
+     which is what this app is for. Each is therefore matched to an open face
+     that is the accepted stand-in for it, all SIL OFL or Apache 2.0, so the
+     proof sheet stays honest and the app stays sellable. */
+  ["Boat lettering — the proof sheet", [
+    "Anton","Arimo Bold","Libre Franklin Bold","Barlow Condensed Bold",
+    "Jost Bold","Chakra Petch Bold"]],
   ["Block — Coast Guard registration OK", [
     "Bebas Neue","Anton","Oswald Bold","Montserrat Bold","Archivo Black",
     "Roboto Condensed Bold","Poppins Bold","Teko Bold","Fjalla One",
@@ -1328,7 +1338,8 @@ const FONT_GROUPS=[
     "Lato Bold","Titillium Web Bold","Saira Condensed Bold","PT Sans Narrow Bold",
     "Fira Sans Bold","Work Sans Bold","Open Sans Bold","Rubik Bold",
     "Archivo Narrow Bold","Chivo Bold","Exo 2 Bold","Cabin Bold",
-    "Staatliches","Russo One","Passion One Bold"]],
+    "Staatliches","Russo One","Passion One Bold",
+    "Arimo Bold","Libre Franklin Bold","Jost Bold","Chakra Petch Bold"]],
   ["Slab & heavy display", [
     "Alfa Slab One","Roboto Slab Bold","Zilla Slab Bold","Bitter Bold",
     "Bungee","Righteous","Ultra"]],
@@ -1341,6 +1352,18 @@ const FONT_GROUPS=[
 /* Only the first group may carry the Coast Guard mark. Anything that is not
    listed above still appears -- under "Other" -- so a font can never go missing
    just because this table was not updated. */
+/* What each open face is standing in for on the proof sheet, so the shop can
+   see at a glance that "Futura" on the customer's sheet means Jost here. The
+   proprietary originals are named only as a reference, never shipped. */
+const BOAT_GROUP="Boat lettering — the proof sheet";
+const FONT_STANDS_IN={
+  "Anton":"1 & 7 — the Anton / Impact look",
+  "Arimo Bold":"2 — Helvetica / Arial Bold",
+  "Libre Franklin Bold":"3 — Franklin Gothic Bold",
+  "Barlow Condensed Bold":"4 — DIN Bold / Condensed",
+  "Jost Bold":"5 — Futura Bold",
+  "Chakra Petch Bold":"6 — Eurostile Bold"
+};
 const USCG_GROUP="Block — Coast Guard registration OK";
 function populateFonts(){
   const sel=$("fontSelect"),cur=sel.value;sel.innerHTML="";
@@ -1348,10 +1371,19 @@ function populateFonts(){
   const grp=(label)=>{const g=document.createElement("optgroup");g.label=label;sel.appendChild(g);return g;};
   const listed=new Set();
   for(const [title,names] of FONT_GROUPS){
-    const have=names.filter(n=>EMBEDDED[n]);
+    /* First group wins. A face belongs to more than one group by design — every
+       proof-sheet face is also a Coast Guard block face — but a <select> that
+       lists the same font twice is just confusing to scroll. The badge logic in
+       fontIsUSCG() reads the table, not the menu, so nothing loses its mark by
+       being shown only once. */
+    const have=names.filter(n=>EMBEDDED[n]&&!listed.has(n));
     if(!have.length)continue;
     const g=grp(title);
-    have.forEach(n=>{listed.add(n);mk(g,"emb:"+n,n);});
+    have.forEach(n=>{
+      listed.add(n);
+      const a=(title===BOAT_GROUP)&&FONT_STANDS_IN[n];
+      mk(g,"emb:"+n, a ? (n+"  —  "+a) : n);
+    });
   }
   const rest=Object.keys(EMBEDDED).filter(n=>!listed.has(n));
   if(rest.length){const g=grp("Other");rest.forEach(n=>mk(g,"emb:"+n,n));}

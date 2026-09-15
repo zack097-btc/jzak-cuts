@@ -37,14 +37,14 @@ full texts are reproduced at the bottom of this file.
 
 ## Bundled fonts
 
-Forty-nine faces are baked into the page so lettering works on any machine,
+Fifty-three faces are baked into the page so lettering works on any machine,
 offline. Each is subset to Latin — letters, digits, punctuation, accented
 characters and the symbols a sign shop cuts — and the variable ones are pinned
 to a single fixed weight. Subsetting and instancing are modifications in the
 licence's sense; both licences below permit them, and neither requires renaming
 for embedding.
 
-**Under the SIL Open Font Licence 1.1** (45 faces):
+**Under the SIL Open Font Licence 1.1** (49 faces):
 
 Bebas Neue · Anton · Big Shoulders Bold · Big Shoulders Stencil · Oswald Bold ·
 Montserrat Bold · Archivo Black · Roboto Condensed Bold · Poppins Bold ·
@@ -55,7 +55,8 @@ Staatliches · Black Ops One · Russo One · Passion One Bold · Great Vibes Scr
 Kaushan Script · Lobster Script · Courgette Script · Saira Stencil One ·
 Work Sans Bold · Open Sans Bold · Rubik Bold · Archivo Narrow Bold · Chivo Bold ·
 Exo 2 Bold · Cabin Bold · Bitter Bold · Dancing Script Bold ·
-Playfair Display Bold · Merriweather Bold · Libre Baskerville Bold
+Playfair Display Bold · Merriweather Bold · Libre Baskerville Bold ·
+Arimo Bold · Libre Franklin Bold · Jost Bold · Chakra Petch Bold
 
 The OFL allows bundling inside and selling of a software product. Its one hard
 rule is that the fonts may not be sold *on their own* as fonts — embedding them
@@ -71,6 +72,30 @@ Apache 2.0 is permissive: it allows commercial use, modification, and
 distribution inside a closed-source product, and asks only that the licence and
 attribution notices be carried along — which is what this file does. It is not
 copyleft and places no obligation on the rest of the application.
+
+### A note on the boat-lettering proof sheet
+
+The shop's boat-lettering sheet offers seven faces. Six of them — **Helvetica**,
+**Arial**, **Franklin Gothic**, **DIN**, **Futura**, **Eurostile** and
+**Impact** — are proprietary designs owned by Monotype and Linotype. A licence
+to *use* one of those on your own machine does **not** permit embedding it in
+software that is sold, which is exactly what this application is. None of them
+is in this build and none ever will be.
+
+Each is instead matched to the open face that is the accepted stand-in for it:
+
+| On the customer's sheet | Shipped here | Licence |
+|---|---|---|
+| Anton | Anton | OFL |
+| Helvetica / Arial Bold | Arimo Bold — metrically compatible with Arial | OFL |
+| Franklin Gothic Bold | Libre Franklin Bold — drawn from the same source | OFL |
+| DIN Bold / Condensed | Barlow Condensed Bold | OFL |
+| Futura Bold | Jost Bold — a Futura revival | OFL |
+| Eurostile Bold | Chakra Petch Bold | OFL |
+| Impact | Anton — the standard open substitute | OFL |
+
+The proprietary names appear in this table, and nowhere in the product, purely
+so the shop can tell a customer which face they are actually getting.
 
 Every face above came from the Google Fonts repository at
 <https://github.com/google/fonts>. **Nothing here is GPL, and nothing here

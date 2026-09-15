@@ -43,6 +43,16 @@ const r=await p.evaluate(async ()=>{
   out.stencilSaysNo = /Not for boat registration/.test(uscgOn("Saira Stencil One"));
   out.serifSaysNo   = /Not for boat registration/.test(uscgOn("Merriweather Bold"));
   out.noFakeDOTbadge = !/DOT (compliant|approved)/i.test(sel.innerHTML+document.getElementById("fontUse").innerHTML);
+  // the proof-sheet group: present, first, in the customer's order, labelled
+  const g0 = sel.querySelector("optgroup");
+  out.firstGroup = g0 ? g0.label : null;
+  out.boatOrder = g0 ? [...g0.children].map(o=>o.value.slice(4)) : [];
+  out.boatLabelled = g0 ? [...g0.children].every(o=>/ — /.test(o.textContent)) : false;
+  // every face on the sheet must also count as Coast Guard block
+  out.boatAllUSCG = out.boatOrder.every(n=>fontIsUSCG("emb:"+n));
+  // and none of the proprietary names may be shipped as a font
+  out.noProprietaryFonts = ["Helvetica","Arial","Franklin Gothic","Futura","Eurostile","Impact","DIN"]
+    .every(bad => !Object.keys(EMBEDDED).some(n => n.toLowerCase() === bad.toLowerCase()));
   // welding: script overlaps collapse, block faces keep their rings
   const ringcount=async(n)=>{const f=await getFont("emb:"+n);
     const raw=flattenOpentype(f.getPath("Marine Repair",0,0,1000,{kerning:true}));
@@ -64,7 +74,11 @@ const r=await p.evaluate(async ()=>{
 });
 r.pageErrors=errs;
 console.log(JSON.stringify(r,null,1));
+const EXPECT_BOAT = ["Anton","Arimo Bold","Libre Franklin Bold","Barlow Condensed Bold","Jost Bold","Chakra Petch Bold"];
 const pass = r.renderFailures.length===0 && r.duplicates.length===0 &&
+  r.firstGroup==="Boat lettering — the proof sheet" &&
+  JSON.stringify(r.boatOrder)===JSON.stringify(EXPECT_BOAT) &&
+  r.boatLabelled && r.boatAllUSCG && r.noProprietaryFonts &&
   r.missingFromDropdown.length===0 && r.inDropdown===r.embedded &&
   r.blockSaysOK && r.scriptSaysNo && r.stencilSaysNo && r.serifSaysNo &&
   r.noFakeDOTbadge && r.pacifico.merged && r.greatvibes.merged &&
