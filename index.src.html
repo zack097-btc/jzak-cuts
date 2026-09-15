@@ -545,7 +545,7 @@ if(!(window.__TAURI_INTERNALS__||window.__TAURI__)&&'serviceWorker' in navigator
    desktop/src-tauri/tauri.conf.json and Cargo.toml — build.py checks that they
    agree and refuses to build if they drift, because a shop that cannot tell
    which build is on the machine cannot tell whether a bug has been fixed. */
-const JZAK_VERSION="10.7.6";
+const JZAK_VERSION="10.7.7";
 try{
   const _vb=document.getElementById("verBadge");
   if(_vb)_vb.textContent="v"+JZAK_VERSION;
@@ -716,7 +716,7 @@ const CutterIO = DESKTOP ? {
        slightly harmful, since every slice boundary is a place the conversation
        has to be picked up again. Hand over bigger pieces and let the shell do
        the metering it is now equipped to do. */
-    const pace=sendPaceMs(), CH=16384;
+    const pace=sendPaceMs(), CH=8192;
     if(!pace && str.length<=CH){ await nativeCall("write_port",{data:str}); if(onProgress)onProgress(str.length,str.length); return; }
     for(let i=0;i<str.length;i+=CH){
       await nativeCall("write_port",{data:str.slice(i,i+CH)});
@@ -859,6 +859,50 @@ async function connect(){
     btn.disabled=false; if(btn.textContent==="Connecting…")btn.textContent=was;
   }
 }
+/* A SEND IS NOT AN INSTANT. It used to be, near enough: the bytes were pushed
+   at the cable and the app called it done while the cutter was still working.
+   From 10.7.6 the send WAITS FOR THE MACHINE, which is what stops a full sheet
+   being overrun — and that means a real job holds this function for minutes.
+
+   Two things follow, and 10.7.6 shipped without either of them, which is why
+   the window greyed out and Windows called it "not responding":
+
+   1. The work has to be off the UI thread. That is the shell's side, fixed in
+      10.7.7 by running the serial commands on the runtime instead of the main
+      thread.
+   2. The operator has to be able to SEE it working and STOP it. A cutter has a
+      blade in it and somebody is standing next to it; "wait and hope" is not an
+      acceptable answer when the wrong vinyl is loaded. */
+function sendingUI(on){
+  const sb=$("sendBtn"); if(!sb) return;
+  if(on){
+    sb.dataset.act="stopSend";
+    sb.textContent="■ STOP";
+    sb.title="Stop sending. The cutter finishes what is already in its buffer.";
+    sb.disabled=false;
+  }else{
+    sb.dataset.act="send";
+    sb.textContent="✂ CUT";
+    sb.title="";
+    sb.disabled=!state.connected;
+  }
+}
+/* Poll the shell for how far the CUTTER has got, not how far the page has got.
+   The page hands over a slice and then waits; without this the readout would sit
+   still through the longest part of the job and look like a hang. */
+function trackProgress(st){
+  if(!DESKTOP) return null;
+  const poll=async()=>{
+    try{
+      const r=await nativeCall("port_progress");
+      if(!r||!r[1]) return;
+      const pct=Math.round(r[0]/r[1]*100);
+      if(st) st.textContent="Cutting… "+pct+"%  ("+r[0]+" of "+r[1]+" bytes handed to the cutter) · press STOP to abandon";
+    }catch(e){ /* an older shell has no such command; the holding line stays up */ }
+  };
+  poll();                       /* at once - see the note in writeToCutter */
+  return setInterval(poll,400);
+}
 async function writeToCutter(str){
   if(!state.connected){
     alert(state.everConnected
@@ -867,15 +911,39 @@ async function writeToCutter(str){
     return false;
   }
   const st=$("statusText"), was=st?st.textContent:"";
+  const big = str.length>4096;
+  let tick=null;
+  if(big){
+    sendingUI(true);
+    /* Say something BEFORE the first reading comes back. The gap is only a few
+       hundred milliseconds, but it is the exact moment the operator is looking
+       at the screen wondering whether the button did anything — and a window
+       that says nothing while it blocks is the whole reason 10.7.6 looked like
+       a crash. */
+    if(st) st.textContent="Cutting… sending the job to the cutter · press STOP to abandon";
+    tick=trackProgress(st);
+  }
   try{
     await CutterIO.write(str,(done,total)=>{
-      if(st && total>4096) st.textContent="Sending to cutter… "+Math.round(done/total*100)+"%  ("+done+" of "+total+" bytes)";
+      if(st && total>4096 && !DESKTOP) st.textContent="Sending to cutter… "+Math.round(done/total*100)+"%  ("+done+" of "+total+" bytes)";
     });
+    if(tick) clearInterval(tick);
+    sendingUI(false);
     if(st) st.textContent=was;
     return true;
   }
   catch(err){
+    if(tick) clearInterval(tick);
+    sendingUI(false);
     if(st) st.textContent=was;
+    /* Stop is not a fault. Say so plainly and leave the link alone — the port is
+       perfectly healthy and the operator will want to send again in a moment. */
+    const msg = err&&err.message?String(err.message):String(err);
+    if(/Stopped by you/i.test(msg)){
+      alert("Stopped.\n\n"+msg+"\n\nThe cutter is still connected and your design is "+
+            "untouched. Reload or re-origin the vinyl before you send again.");
+      return false;
+    }
     /* A write that fails means the port is gone, whatever the message says. */
     try{ await CutterIO.disconnect(); }catch(e){}
     linkLost(err&&err.message?String(err.message).slice(0,60):"");
@@ -4042,6 +4110,10 @@ const ACT={
     if(needAcross>matW+0.01)warn+="This job needs "+needAcross.toFixed(1)+'" ACROSS the roll, but Vinyl width is set to '+matW+'".\n';
     if(warn&&!confirm(warn+"\nCut anyway?"))return;
     const h=generateHPGL();await writeToCutter(h);},
+  stopSend:async()=>{
+    try{ await nativeCall("stop_send"); }
+    catch(e){ alert("This build of the shell cannot stop a send. Switch the cutter off to abandon the job."); }
+  },
   /* pen-up lap around the job's bounding box — watch where the head goes and
      you know exactly where the cut will land before any cutting happens */
   walk:async()=>{if(!state.connected){alert("Connect the cutter first (Cut \u25b8 Connect Cutter).");return;}

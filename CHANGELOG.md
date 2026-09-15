@@ -1,5 +1,43 @@
 # JZAK Cuts — what changed, version by version
 
+## 10.7.7 — 15 September 2026
+
+### "Not responding"
+
+10.7.6 fixed the stall and immediately caused a worse-looking problem: press CUT
+and the window greys out and Windows says the program is not responding.
+
+Tauri runs a command on the MAIN thread unless it is told otherwise, and the
+main thread is the one that repaints the window. Up to 10.7.5 that was
+survivable by accident — a send was metered to the cable, a slice was over in
+about two seconds, and nobody noticed the window was wedged for it. 10.7.6 made
+the send WAIT FOR THE CUTTER, which is the entire point of it, and a wait of
+thirty seconds on the main thread is a window that has not answered Windows in
+thirty seconds. The cut was going out perfectly well underneath. The app simply
+had no thread left to say so.
+
+Opening, writing and closing the port now run on the runtime instead. The window
+keeps painting for the whole job.
+
+### Watching it, and stopping it
+
+A send is no longer an instant, so the app has to behave like something is
+happening. While a job is going out:
+
+- CUT becomes **■ STOP**.
+- The status bar shows how far the CUTTER has got — not how far the page has got
+  — because the page hands over a slice and then waits, and a readout that sits
+  still through the longest part of the job looks exactly like a hang.
+- A holding line goes up immediately, before the first byte count exists, since
+  that is the moment somebody is staring at the screen wondering whether the
+  button did anything.
+
+STOP is a real stop. A cutter has a blade in it and somebody is standing next to
+it; when the wrong vinyl is loaded the answer cannot be "wait for the buffer to
+drain" or "kill the app and hope". The send loops check between blocks, stop
+where they are, and report how far they got. It is reported as an outcome rather
+than a fault, so the port stays open and the next job goes out normally.
+
 ## 10.7.6 — 15 September 2026
 
 ### The stall, properly this time
