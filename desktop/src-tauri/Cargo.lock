@@ -1590,7 +1590,7 @@ dependencies = [
 
 [[package]]
 name = "jzak-cuts"
-version = "10.7.2"
+version = "10.7.5"
 dependencies = [
  "serde",
  "serde_json",
